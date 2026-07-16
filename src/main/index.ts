@@ -1,5 +1,6 @@
 import { BrowserWindow, app, nativeTheme, session, shell } from 'electron'
 import { join } from 'path'
+import { registerModelWithExo } from './destinations/exoApi'
 import { DownloadManager } from './downloads/manager'
 import { registerIpc } from './ipc'
 import { SettingsStore } from './settings'
@@ -86,7 +87,8 @@ if (!gotLock) {
       userDataDir: app.getPath('userData'),
       getToken: () => settings.getToken(),
       getMaxConcurrent: () => settings.get().maxConcurrentJobs,
-      getAutoResume: () => settings.get().autoResume
+      getAutoResume: () => settings.get().autoResume,
+      registerInExo: registerModelWithExo
     })
     registerIpc(manager, settings)
     await manager.init()

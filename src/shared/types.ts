@@ -31,6 +31,18 @@ export type JobState =
   | 'cancelled'
   | 'error'
 
+export type ExoRegistrationStatus = 'registered' | 'already-listed' | 'exo-offline' | 'failed'
+
+/**
+ * Outcome of registering a completed download in exo's model list. exo only
+ * shows models that have a model card, so arbitrary HF repos placed in its
+ * models dir stay invisible until added via its API.
+ */
+export interface ExoRegistration {
+  status: ExoRegistrationStatus
+  message: string | null
+}
+
 export type DownloadErrorCode =
   | 'auth-required'
   | 'not-found'
@@ -63,6 +75,8 @@ export interface DownloadJobSnapshot {
   error: { code: DownloadErrorCode; message: string } | null
   createdAt: number
   completedAt: number | null
+  /** Set after a completed exo download is (auto-)registered with exo. */
+  exoRegistration: ExoRegistration | null
 }
 
 export type DownloadEvent =

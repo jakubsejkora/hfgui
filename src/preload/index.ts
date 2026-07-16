@@ -8,6 +8,7 @@ const api: HfguiApi = {
   resumeDownload: (jobId) => ipcRenderer.invoke(IPC.resumeDownload, jobId),
   cancelDownload: (jobId, opts) => ipcRenderer.invoke(IPC.cancelDownload, jobId, opts),
   removeDownload: (jobId) => ipcRenderer.invoke(IPC.removeDownload, jobId),
+  retryExoRegistration: (jobId) => ipcRenderer.invoke(IPC.retryExoRegistration, jobId),
   listDownloads: () => ipcRenderer.invoke(IPC.listDownloads),
   onDownloadEvent: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, ev: DownloadEvent): void => cb(ev)

@@ -4,6 +4,7 @@ import type {
   DownloadEvent,
   DownloadJobSnapshot,
   DownloadRequest,
+  ExoRegistration,
   FileProgress,
   JobState
 } from '@shared/types'
@@ -46,6 +47,7 @@ export class DownloadJob {
   error: DownloadJobSnapshot['error'] = null
   createdAt: number
   completedAt: number | null = null
+  exoRegistration: ExoRegistration | null = null
 
   private deps: JobDeps
   private abortController: AbortController | null = null
@@ -91,6 +93,7 @@ export class DownloadJob {
     job.error = snap.error
     job.createdAt = snap.createdAt
     job.completedAt = snap.completedAt
+    job.exoRegistration = snap.exoRegistration ?? null
     return job
   }
 
@@ -121,12 +124,19 @@ export class DownloadJob {
       totalBytes: this.totalBytes,
       error: this.error,
       createdAt: this.createdAt,
-      completedAt: this.completedAt
+      completedAt: this.completedAt,
+      exoRegistration: this.exoRegistration ? { ...this.exoRegistration } : null
     }
   }
 
   setState(state: JobState): void {
     this.state = state
+    this.deps.emit({ type: 'state', jobId: this.jobId, snapshot: this.snapshot() })
+    this.deps.persist()
+  }
+
+  setExoRegistration(reg: ExoRegistration | null): void {
+    this.exoRegistration = reg
     this.deps.emit({ type: 'state', jobId: this.jobId, snapshot: this.snapshot() })
     this.deps.persist()
   }

@@ -16,6 +16,7 @@ export const IPC = {
   resumeDownload: 'hfgui:resume-download',
   cancelDownload: 'hfgui:cancel-download',
   removeDownload: 'hfgui:remove-download',
+  retryExoRegistration: 'hfgui:retry-exo-registration',
   listDownloads: 'hfgui:list-downloads',
   downloadEvent: 'hfgui:download-event',
   getSettings: 'hfgui:get-settings',
@@ -36,6 +37,8 @@ export interface HfguiApi {
   resumeDownload(jobId: string): Promise<void>
   cancelDownload(jobId: string, opts?: { deletePartial?: boolean }): Promise<void>
   removeDownload(jobId: string): Promise<void>
+  /** Re-attempt registering a completed exo download in exo's model list. */
+  retryExoRegistration(jobId: string): Promise<void>
   listDownloads(): Promise<DownloadJobSnapshot[]>
   /** Returns an unsubscribe function. */
   onDownloadEvent(cb: (e: DownloadEvent) => void): () => void

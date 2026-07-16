@@ -3,6 +3,7 @@ import type {
   DownloadEvent,
   DownloadJobSnapshot,
   DownloadRequest,
+  ExoRegistration,
   StartDownloadResult
 } from '@shared/types'
 import { checkDiskSpace } from '../system'
@@ -14,6 +15,7 @@ export interface ManagerDeps {
   getToken(): string | null
   getMaxConcurrent(): number
   getAutoResume(): boolean
+  registerInExo(repoId: string): Promise<ExoRegistration>
 }
 
 const ACTIVE_STATES = new Set(['queued', 'downloading', 'verifying'])
@@ -24,6 +26,7 @@ export class DownloadManager {
   private listeners = new Set<(ev: DownloadEvent) => void>()
   private persistence: Persistence
   private deps: ManagerDeps
+  private exoRegistrationsInFlight = new Set<string>()
 
   constructor(deps: ManagerDeps) {
     this.deps = deps
@@ -58,6 +61,16 @@ export class DownloadManager {
       }
     }
     this.pump()
+    // Pick up registrations missed because exo wasn't running (or the app quit).
+    for (const job of this.jobs.values()) {
+      if (
+        job.state === 'completed' &&
+        job.destination.kind === 'exo' &&
+        (job.exoRegistration === null || job.exoRegistration.status === 'exo-offline')
+      ) {
+        void this.registerJobInExo(job)
+      }
+    }
   }
 
   onEvent(cb: (ev: DownloadEvent) => void): () => void {
@@ -118,8 +131,31 @@ export class DownloadManager {
       .sort((a, b) => a.createdAt - b.createdAt)
       .slice(0, slots)
     for (const job of queued) {
-      void job.run().finally(() => this.pump())
+      void job.run().finally(() => {
+        if (job.state === 'completed' && job.destination.kind === 'exo') {
+          void this.registerJobInExo(job)
+        }
+        this.pump()
+      })
     }
+  }
+
+  /** exo lists models from its card registry, so completed exo downloads are registered via its API. */
+  private async registerJobInExo(job: DownloadJob): Promise<void> {
+    if (this.exoRegistrationsInFlight.has(job.jobId)) return
+    this.exoRegistrationsInFlight.add(job.jobId)
+    try {
+      const reg = await this.deps.registerInExo(job.repoId)
+      if (this.jobs.has(job.jobId)) job.setExoRegistration(reg)
+    } finally {
+      this.exoRegistrationsInFlight.delete(job.jobId)
+    }
+  }
+
+  retryExoRegistration(jobId: string): void {
+    const job = this.jobs.get(jobId)
+    if (!job || job.state !== 'completed' || job.destination.kind !== 'exo') return
+    void this.registerJobInExo(job)
   }
 
   pause(jobId: string): void {
