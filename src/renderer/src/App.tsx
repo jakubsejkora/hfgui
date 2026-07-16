@@ -1,13 +1,14 @@
 import { useEffect } from 'react'
 import { useDownloadsStore } from './lib/downloadsStore'
 import { useTheme } from './lib/useTheme'
-import { useUiStore } from './lib/uiStore'
+import { useUiStore, type View } from './lib/uiStore'
 import { TooltipProvider } from './components/ui/tooltip'
 import { Sidebar } from './components/app/Sidebar'
 import { Toasts } from './components/app/Toasts'
 import { BrowseView } from './views/BrowseView'
 import { DownloadsView } from './views/DownloadsView'
 import { ModelDetailView } from './views/ModelDetailView'
+import { PrivateInferenceView } from './views/PrivateInferenceView'
 import { SettingsView } from './views/SettingsView'
 
 export default function App() {
@@ -26,7 +27,7 @@ export default function App() {
   useEffect(() => {
     ;(window as unknown as Record<string, unknown>).__hfguiTest = {
       openModel: (id: string) => useUiStore.getState().openModel(id),
-      setView: (v: 'browse' | 'downloads' | 'settings') => useUiStore.getState().setView(v),
+      setView: (v: View) => useUiStore.getState().setView(v),
       getJobs: () => useDownloadsStore.getState().jobs
     }
   }, [])
@@ -40,6 +41,7 @@ export default function App() {
           <div className="drag-region absolute inset-x-0 top-0 z-30 h-5" />
           {view === 'browse' && <BrowseView />}
           {view === 'downloads' && <DownloadsView />}
+          {view === 'private-inference' && <PrivateInferenceView />}
           {view === 'settings' && <SettingsView />}
         </main>
       </div>

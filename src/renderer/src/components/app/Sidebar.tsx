@@ -1,4 +1,4 @@
-import { ArrowDownToLine, Compass, Settings } from 'lucide-react'
+import { ArrowDownToLine, Compass, Settings, ShieldCheck } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useDownloadsStore, selectActiveCount } from '@/lib/downloadsStore'
 import { useUiStore, type View } from '@/lib/uiStore'
@@ -58,6 +58,11 @@ export function Sidebar() {
           icon={<ArrowDownToLine className="h-4 w-4" />}
           label="Downloads"
           badge={activeCount}
+        />
+        <NavItem
+          view="private-inference"
+          icon={<ShieldCheck className="h-4 w-4" />}
+          label="Private inference"
         />
         <NavItem view="settings" icon={<Settings className="h-4 w-4" />} label="Settings" />
       </nav>

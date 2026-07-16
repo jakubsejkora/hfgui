@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type View = 'browse' | 'downloads' | 'settings'
+export type View = 'browse' | 'downloads' | 'private-inference' | 'settings'
 
 interface UiState {
   view: View
