@@ -194,6 +194,14 @@ export async function searchModels(
   }
 }
 
+/** Single repo fetched with the same expansions as search, for card display. */
+export async function getModelSummary(repoId: string): Promise<ModelSummary> {
+  const params = new URLSearchParams()
+  for (const e of EXPAND) params.append('expand[]', e)
+  const res = await hfFetch(`${API}/api/models/${repoId}?${params}`)
+  return toSummary(await res.json())
+}
+
 export async function getModel(repoId: string): Promise<ModelDetail> {
   const res = await hfFetch(`${API}/api/models/${repoId}`)
   const raw: any = await res.json()

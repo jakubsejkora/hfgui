@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient
 } from '@tanstack/react-query'
-import { getModel, getModelTree, searchModels, type SearchQuery } from './hfApi'
+import { getModel, getModelSummary, getModelTree, searchModels, type SearchQuery } from './hfApi'
 
 export function useModelSearch(query: SearchQuery) {
   return useInfiniteQuery({
@@ -14,6 +14,14 @@ export function useModelSearch(query: SearchQuery) {
     getNextPageParam: (last) => last.nextUrl,
     placeholderData: keepPreviousData,
     staleTime: 60_000
+  })
+}
+
+export function useModelSummary(repoId: string) {
+  return useQuery({
+    queryKey: ['model-summary', repoId],
+    queryFn: () => getModelSummary(repoId),
+    staleTime: 5 * 60_000
   })
 }
 
