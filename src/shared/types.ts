@@ -1,5 +1,6 @@
 export type ModelFormat = 'gguf' | 'mlx' | 'other'
 export type DestinationKind = 'lmstudio' | 'exo' | 'custom'
+export type Theme = 'system' | 'light' | 'dark'
 
 export interface TreeFile {
   path: string
@@ -84,6 +85,7 @@ export interface Settings {
   customDir: string | null
   maxConcurrentJobs: number
   autoResume: boolean
+  theme: Theme
 }
 
 export interface DestinationInfo {

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useDownloadsStore } from './lib/downloadsStore'
+import { useTheme } from './lib/useTheme'
 import { useUiStore } from './lib/uiStore'
 import { TooltipProvider } from './components/ui/tooltip'
 import { Sidebar } from './components/app/Sidebar'
@@ -11,6 +12,7 @@ import { SettingsView } from './views/SettingsView'
 
 export default function App() {
   const view = useUiStore((s) => s.view)
+  useTheme()
 
   useEffect(() => {
     void useDownloadsStore.getState().hydrate()

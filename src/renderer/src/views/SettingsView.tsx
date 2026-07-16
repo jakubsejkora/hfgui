@@ -1,13 +1,20 @@
-import { FolderSearch, KeyRound, RotateCcw } from 'lucide-react'
+import { FolderSearch, KeyRound, RotateCcw, SunMoon } from 'lucide-react'
 import { useState } from 'react'
-import type { DestinationKind, Settings } from '@shared/types'
+import type { DestinationKind, Settings, Theme } from '@shared/types'
 import { useDestinations, useInvalidate, useSettings, useTokenStatus } from '@/lib/queries'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip } from '@/components/ui/tooltip'
 import { TokenDialog } from '@/components/app/TokenDialog'
+
+const THEME_OPTIONS = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' }
+]
 
 const DIR_SETTING: Record<DestinationKind, keyof Settings> = {
   lmstudio: 'lmstudioDir',
@@ -92,6 +99,28 @@ export function SettingsView() {
       </div>
       <div className="flex-1 overflow-y-auto px-6 py-5">
         <div className="flex max-w-2xl flex-col gap-8">
+          <section className="flex flex-col gap-2.5">
+            <h2 className="text-faint text-[11px] font-semibold tracking-wider uppercase">
+              Appearance
+            </h2>
+            <div className="border-border bg-surface flex items-center gap-3 rounded-xl border p-4">
+              <SunMoon className="text-accent h-4 w-4 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-semibold">Theme</div>
+                <div className="text-faint text-[11px]">
+                  Follow the system appearance, or pick light or dark.
+                </div>
+              </div>
+              <Select
+                value={settings?.theme ?? 'system'}
+                onValueChange={(v) => void patch({ theme: v as Theme })}
+                options={THEME_OPTIONS}
+                className="h-8 w-32 text-xs"
+                ariaLabel="Theme"
+              />
+            </div>
+          </section>
+
           <section className="flex flex-col gap-2.5">
             <h2 className="text-faint text-[11px] font-semibold tracking-wider uppercase">
               Model folders

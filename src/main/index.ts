@@ -1,4 +1,4 @@
-import { BrowserWindow, app, session, shell } from 'electron'
+import { BrowserWindow, app, nativeTheme, session, shell } from 'electron'
 import { join } from 'path'
 import { DownloadManager } from './downloads/manager'
 import { registerIpc } from './ipc'
@@ -18,7 +18,7 @@ function createWindow(): BrowserWindow {
     minWidth: 980,
     minHeight: 640,
     show: false,
-    backgroundColor: '#0b0b0e',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b0b0e' : '#f4f4f6',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 18, y: 18 },
     webPreferences: {
@@ -80,6 +80,8 @@ if (!gotLock) {
     patchHuggingFaceCors()
 
     const settings = new SettingsStore(app.getPath('userData'))
+    // Drives the renderer's prefers-color-scheme; set before the window exists.
+    nativeTheme.themeSource = settings.get().theme
     manager = new DownloadManager({
       userDataDir: app.getPath('userData'),
       getToken: () => settings.getToken(),

@@ -4,6 +4,12 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import './styles/globals.css'
 
+// Apply the theme class before first paint; useTheme keeps it in sync after.
+document.documentElement.classList.toggle(
+  'light',
+  window.matchMedia('(prefers-color-scheme: light)').matches
+)
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

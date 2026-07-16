@@ -1,4 +1,4 @@
-import { Clock, Download, Heart, Lock } from 'lucide-react'
+import { Clock, Download, HardDrive, Heart, Lock } from 'lucide-react'
 import { formatBytes, formatCount, hashHue, relativeTime } from '@shared/format'
 import type { ModelSummary } from '@/lib/hfApi'
 import { Badge } from '@/components/ui/badge'
@@ -11,11 +11,7 @@ function FormatBadge({ format }: { format: ModelSummary['format'] }) {
 
 export function ModelCard({ model, onClick }: { model: ModelSummary; onClick(): void }) {
   const hue = hashHue(model.author)
-  const sizeHint = model.ggufTotalFileSize
-    ? formatBytes(model.ggufTotalFileSize)
-    : model.paramCount
-      ? `${formatCount(model.paramCount)} params`
-      : null
+  const sizeBytes = model.ggufTotalFileSize ?? model.safetensorsSizeBytes
 
   return (
     <button
@@ -26,8 +22,8 @@ export function ModelCard({ model, onClick }: { model: ModelSummary; onClick(): 
         <div
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold"
           style={{
-            backgroundColor: `hsl(${hue} 45% 22%)`,
-            color: `hsl(${hue} 85% 72%)`
+            backgroundColor: `hsl(${hue} var(--avatar-bg-sl))`,
+            color: `hsl(${hue} var(--avatar-fg-sl))`
           }}
         >
           {(model.author[0] ?? '?').toUpperCase()}
@@ -61,7 +57,16 @@ export function ModelCard({ model, onClick }: { model: ModelSummary; onClick(): 
           <Clock className="h-3 w-3" />
           {relativeTime(model.lastModified)}
         </span>
-        {sizeHint && <span className="text-faint ml-auto font-medium">{sizeHint}</span>}
+        {sizeBytes != null ? (
+          <span className="text-faint ml-auto flex items-center gap-1 font-medium">
+            <HardDrive className="h-3 w-3" />
+            {formatBytes(sizeBytes)}
+          </span>
+        ) : model.paramCount ? (
+          <span className="text-faint ml-auto font-medium">
+            {formatCount(model.paramCount)} params
+          </span>
+        ) : null}
       </div>
     </button>
   )

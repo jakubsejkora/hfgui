@@ -102,7 +102,7 @@ export function BrowseView() {
                 className={cn(
                   'h-6.5 cursor-pointer rounded-full px-3 text-xs font-medium transition-colors',
                   format === chip.value
-                    ? 'bg-accent text-black'
+                    ? 'bg-accent text-accent-fg'
                     : 'text-muted hover:text-text'
                 )}
               >
