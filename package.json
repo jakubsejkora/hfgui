@@ -1,0 +1,46 @@
+{
+  "name": "hfgui",
+  "version": "0.1.0",
+  "description": "A nice GUI for downloading Hugging Face models for LM Studio and exo",
+  "main": "./out/main/index.js",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "test": "vitest run",
+    "e2e": "node scripts/e2e.mjs"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.101.2",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.24.0",
+    "radix-ui": "^1.6.2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwind-merge": "^3.6.0",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^43.1.1",
+    "electron-vite": "^5.0.0",
+    "playwright-core": "^1.61.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "electron@43.1.1": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.1": true
+  }
+}
