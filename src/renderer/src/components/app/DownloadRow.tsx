@@ -7,7 +7,7 @@ import {
   X
 } from 'lucide-react'
 import { formatBytes, formatEta, formatSpeed } from '@shared/format'
-import type { DownloadJobSnapshot } from '@shared/types'
+import type { DownloadJobSnapshot, ExoRegistration } from '@shared/types'
 import type { ProgressInfo } from '@/lib/downloadsStore'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,22 @@ const DEST_LABEL: Record<string, string> = {
   lmstudio: 'LM Studio',
   exo: 'exo',
   custom: 'Custom'
+}
+
+function exoRegistrationLine(reg: ExoRegistration): { text: string; retryable: boolean } {
+  switch (reg.status) {
+    case 'registered':
+      return { text: 'Added to exo — pick it in the exo dashboard', retryable: false }
+    case 'already-listed':
+      return { text: 'Ready in exo — pick it in the exo dashboard', retryable: false }
+    case 'exo-offline':
+      return { text: "exo isn't running — start it and retry to add this model", retryable: true }
+    case 'failed':
+      return {
+        text: `exo couldn't add this model${reg.message ? `: ${reg.message}` : ''}`,
+        retryable: true
+      }
+  }
 }
 
 const STATE_LABEL: Record<string, string> = {
@@ -171,6 +187,26 @@ export function DownloadRow({
           {job.error.message}
         </div>
       )}
+
+      {job.state === 'completed' && job.destination.kind === 'exo' && job.exoRegistration && (() => {
+        const line = exoRegistrationLine(job.exoRegistration)
+        return (
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className={line.retryable ? 'text-muted' : 'text-success'}>{line.text}</span>
+            {line.retryable && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void g.retryExoRegistration(job.jobId)}
+                data-testid={`retry-exo-${job.jobId}`}
+              >
+                <RotateCcw className="h-3 w-3" />
+                Retry
+              </Button>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }

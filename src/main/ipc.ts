@@ -32,6 +32,9 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
     manager.cancel(jobId, opts?.deletePartial ?? true)
   )
   ipcMain.handle(IPC.removeDownload, (_e, jobId: string) => manager.remove(jobId))
+  ipcMain.handle(IPC.retryExoRegistration, (_e, jobId: string) =>
+    manager.retryExoRegistration(jobId)
+  )
   ipcMain.handle(IPC.listDownloads, () => manager.list())
 
   ipcMain.handle(IPC.getSettings, () => settings.get())
