@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { DownloadRequest, Settings } from '@shared/types'
 import { adapters, getDestinations } from './destinations'
@@ -35,7 +35,11 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
   ipcMain.handle(IPC.listDownloads, () => manager.list())
 
   ipcMain.handle(IPC.getSettings, () => settings.get())
-  ipcMain.handle(IPC.setSettings, (_e, patch: Partial<Settings>) => settings.set(patch))
+  ipcMain.handle(IPC.setSettings, async (_e, patch: Partial<Settings>) => {
+    const next = await settings.set(patch)
+    if (patch.theme !== undefined) nativeTheme.themeSource = next.theme
+    return next
+  })
   ipcMain.handle(IPC.setHfToken, (_e, token: string | null) => settings.setToken(token))
   ipcMain.handle(IPC.getHfTokenStatus, () => settings.getTokenStatus())
 

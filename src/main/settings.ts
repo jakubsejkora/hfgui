@@ -10,7 +10,8 @@ const DEFAULTS: Settings = {
   exoDir: null,
   customDir: null,
   maxConcurrentJobs: 2,
-  autoResume: false
+  autoResume: false,
+  theme: 'system'
 }
 
 async function writeAtomic(file: string, data: string): Promise<void> {
@@ -34,7 +35,9 @@ export class SettingsStore {
   private loadSync(): Settings {
     try {
       const raw = JSON.parse(readFileSync(this.file, 'utf8'))
-      return { ...DEFAULTS, ...raw }
+      const loaded: Settings = { ...DEFAULTS, ...raw }
+      if (!['system', 'light', 'dark'].includes(loaded.theme)) loaded.theme = 'system'
+      return loaded
     } catch {
       return { ...DEFAULTS }
     }
@@ -47,6 +50,7 @@ export class SettingsStore {
   async set(patch: Partial<Settings>): Promise<Settings> {
     this.cache = { ...this.cache, ...patch }
     this.cache.maxConcurrentJobs = Math.min(5, Math.max(1, this.cache.maxConcurrentJobs | 0))
+    if (!['system', 'light', 'dark'].includes(this.cache.theme)) this.cache.theme = 'system'
     await writeAtomic(this.file, JSON.stringify(this.cache, null, 2))
     return this.get()
   }

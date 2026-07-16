@@ -12,6 +12,7 @@
   --color-faint: #67676f;
   --color-accent: #ffb340;
   --color-accent-hover: #ffc266;
+  --color-accent-fg: #000000;
   --color-danger: #f4635e;
   --color-success: #4ade80;
   --color-warning: #fbbf24;
@@ -24,6 +25,39 @@
   --animate-fade-in: fade-in 0.18s ease;
   --animate-slide-in: slide-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-pop-in: pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ModelCard avatar hue-derived colors: saturation/lightness per theme. */
+:root {
+  --avatar-bg-sl: 45% 22%;
+  --avatar-fg-sl: 85% 72%;
+}
+
+/*
+ * Light theme: overrides the @theme design tokens (un-layered, so it wins over
+ * @layer theme). The class is mirrored from prefers-color-scheme, which the
+ * main process drives via nativeTheme.themeSource.
+ */
+html.light {
+  --color-bg: #f4f4f6;
+  --color-surface: #ffffff;
+  --color-surface-2: #efeff2;
+  --color-surface-3: #e4e4e9;
+  --color-border: #e3e3e8;
+  --color-border-strong: #c7c7d1;
+  --color-text: #1b1b21;
+  --color-muted: #5e5e6a;
+  --color-faint: #8a8a94;
+  --color-accent: #b45309;
+  --color-accent-hover: #92400e;
+  --color-accent-fg: #ffffff;
+  --color-danger: #dc2626;
+  --color-success: #15803d;
+  --color-warning: #a16207;
+  --color-mlx: #0369a1;
+
+  --avatar-bg-sl: 70% 88%;
+  --avatar-fg-sl: 70% 30%;
 }
 
 @keyframes fade-in {
@@ -89,14 +123,14 @@ textarea,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2c2c36;
+  background: var(--color-border);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a47;
+  background: var(--color-border-strong);
   border: 2px solid transparent;
   background-clip: padding-box;
 }

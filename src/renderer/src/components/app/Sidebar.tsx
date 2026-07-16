@@ -29,7 +29,7 @@ function NavItem({
       {icon}
       {label}
       {badge != null && badge > 0 && (
-        <span className="bg-accent ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-black">
+        <span className="bg-accent text-accent-fg ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold">
           {badge}
         </span>
       )}
@@ -43,7 +43,7 @@ export function Sidebar() {
     <aside className="drag-region bg-surface border-border flex w-[216px] shrink-0 flex-col border-r">
       {/* space for macOS traffic lights */}
       <div className="flex items-center gap-2.5 px-4 pt-12 pb-5">
-        <div className="from-accent flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br to-[#ff7a45] text-base shadow-lg shadow-black/30">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#ffb340] to-[#ff7a45] text-base shadow-lg shadow-black/30">
           🤗
         </div>
         <div>

@@ -17,6 +17,8 @@ export interface ModelSummary {
   libraryName: string | null
   /** Aggregate GGUF metadata from the Hub, when the repo contains GGUF files. */
   ggufTotalFileSize: number | null
+  /** Weight bytes computed from safetensors per-dtype counts, when available. */
+  safetensorsSizeBytes: number | null
   /** Parameter count from safetensors metadata, when available. */
   paramCount: number | null
   format: ModelFormat
@@ -98,6 +100,46 @@ export function formatOf(tags: string[], libraryName: string | null): ModelForma
   return 'other'
 }
 
+/** Bytes per element for safetensors dtype codes. */
+const DTYPE_BYTES: Record<string, number> = {
+  F64: 8,
+  I64: 8,
+  U64: 8,
+  F32: 4,
+  I32: 4,
+  U32: 4,
+  F16: 2,
+  BF16: 2,
+  I16: 2,
+  U16: 2,
+  F8_E4M3: 1,
+  F8_E5M2: 1,
+  I8: 1,
+  U8: 1,
+  BOOL: 1
+}
+
+/**
+ * Total weight bytes from the Hub's safetensors per-dtype element counts.
+ * Quantized MLX repos store packed U32 weights plus F16 scales, so the sum
+ * matches the real download size. Null when counts are missing or contain an
+ * unknown dtype (guessing would silently under-report).
+ */
+export function safetensorsSizeBytes(
+  parameters: Record<string, number> | null | undefined
+): number | null {
+  if (!parameters) return null
+  const entries = Object.entries(parameters)
+  if (entries.length === 0) return null
+  let bytes = 0
+  for (const [dtype, count] of entries) {
+    const perElement = DTYPE_BYTES[dtype]
+    if (perElement === undefined || typeof count !== 'number') return null
+    bytes += count * perElement
+  }
+  return bytes
+}
+
 function splitRepoId(id: string): { author: string; name: string } {
   const slash = id.indexOf('/')
   if (slash === -1) return { author: '', name: id }
@@ -122,6 +164,7 @@ function toSummary(raw: any): ModelSummary {
     trendingScore: raw.trendingScore ?? null,
     libraryName,
     ggufTotalFileSize: raw.gguf?.totalFileSize ?? null,
+    safetensorsSizeBytes: safetensorsSizeBytes(raw.safetensors?.parameters),
     paramCount: raw.safetensors?.total ?? null,
     format: formatOf(tags, libraryName)
   }
