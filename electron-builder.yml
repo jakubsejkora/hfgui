@@ -1,0 +1,22 @@
+appId: cz.sejkora.hfgui
+productName: hfgui
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - '!node_modules/**'
+npmRebuild: false
+mac:
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
+  target:
+    - target: dmg
+      arch:
+        - arm64
+dmg:
+  artifactName: ${productName}-${version}-${arch}.dmg

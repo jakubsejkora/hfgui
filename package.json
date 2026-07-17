@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "A nice GUI for downloading Hugging Face models for LM Studio and exo",
   "main": "./out/main/index.js",
+  "author": "Jakub Sejkora <jakub@sejkora.cz>",
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",
@@ -12,7 +13,8 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test": "vitest run",
-    "e2e": "node scripts/e2e.mjs"
+    "e2e": "node scripts/e2e.mjs",
+    "dist:mac": "electron-vite build && electron-builder --mac"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.2",
@@ -31,6 +33,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "playwright-core": "^1.61.1",
     "tailwindcss": "^4.3.3",
