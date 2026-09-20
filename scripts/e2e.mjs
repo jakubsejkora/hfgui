@@ -110,10 +110,22 @@ try {
     log(`completed: ${finalPath} (${(actual / 1e6).toFixed(1)} MB), layout OK`)
   }
 
-  // Downloads view shows the completed row.
+  // Close the model sheet (its modal overlay aria-hides the rest of the app),
+  // then check the Downloads view shows the completed row.
+  await win.keyboard.press('Escape')
   await win.evaluate(() => window.__hfguiTest.setView('downloads'))
   await win.waitForSelector('text=Completed', { timeout: 5000 })
   log('downloads view shows the completed job')
+
+  // Remove the row: the store must drop it live (removed event), no reload.
+  await win.getByRole('button', { name: 'Remove from list' }).first().click()
+  await win.waitForFunction(
+    () => Object.keys(window.__hfguiTest.getJobs()).length === 0,
+    undefined,
+    { timeout: 5000 }
+  )
+  await win.waitForSelector('text=No downloads yet', { timeout: 5000 })
+  log('remove-from-list drops the row without a reload')
 
   if (process.exitCode !== 1) log('PASS — all checks green')
 } catch (e) {

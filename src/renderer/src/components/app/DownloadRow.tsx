@@ -1,4 +1,5 @@
 import {
+  ExternalLink,
   FolderOpen,
   Pause,
   Play,
@@ -20,18 +21,29 @@ const DEST_LABEL: Record<string, string> = {
   custom: 'Custom'
 }
 
-function exoRegistrationLine(reg: ExoRegistration): { text: string; retryable: boolean } {
+const EXO_DASHBOARD_URL = 'http://localhost:52415'
+
+function exoRegistrationLine(reg: ExoRegistration): {
+  text: string
+  retryable: boolean
+  showDashboard: boolean
+} {
   switch (reg.status) {
     case 'registered':
-      return { text: 'Added to exo — pick it in the exo dashboard', retryable: false }
+      return { text: 'Added to exo', retryable: false, showDashboard: true }
     case 'already-listed':
-      return { text: 'Ready in exo — pick it in the exo dashboard', retryable: false }
+      return { text: 'Ready in exo', retryable: false, showDashboard: true }
     case 'exo-offline':
-      return { text: "exo isn't running — start it and retry to add this model", retryable: true }
+      return {
+        text: "exo isn't running — start it and retry to add this model",
+        retryable: true,
+        showDashboard: false
+      }
     case 'failed':
       return {
         text: `exo couldn't add this model${reg.message ? `: ${reg.message}` : ''}`,
-        retryable: true
+        retryable: true,
+        showDashboard: false
       }
   }
 }
@@ -84,13 +96,13 @@ export function DownloadRow({
             <>
               {job.state === 'downloading' && (
                 <Tooltip content="Pause">
-                  <Button variant="ghost" size="icon" onClick={() => void g.pauseDownload(job.jobId)} data-testid={`pause-${job.jobId}`}>
+                  <Button variant="ghost" size="icon" aria-label="Pause" onClick={() => void g.pauseDownload(job.jobId)} data-testid={`pause-${job.jobId}`}>
                     <Pause className="h-4 w-4" />
                   </Button>
                 </Tooltip>
               )}
               <Tooltip content="Cancel and delete partial file">
-                <Button variant="ghost" size="icon" onClick={() => void g.cancelDownload(job.jobId)} data-testid={`cancel-${job.jobId}`}>
+                <Button variant="ghost" size="icon" aria-label="Cancel and delete partial file" onClick={() => void g.cancelDownload(job.jobId)} data-testid={`cancel-${job.jobId}`}>
                   <X className="h-4 w-4" />
                 </Button>
               </Tooltip>
@@ -98,42 +110,64 @@ export function DownloadRow({
           ) : job.state === 'paused' ? (
             <>
               <Tooltip content="Resume">
-                <Button variant="ghost" size="icon" onClick={() => void g.resumeDownload(job.jobId)} data-testid={`resume-${job.jobId}`}>
+                <Button variant="ghost" size="icon" aria-label="Resume" onClick={() => void g.resumeDownload(job.jobId)} data-testid={`resume-${job.jobId}`}>
                   <Play className="h-4 w-4" />
                 </Button>
               </Tooltip>
               <Tooltip content="Cancel and delete partial file">
-                <Button variant="ghost" size="icon" onClick={() => void g.cancelDownload(job.jobId)}>
+                <Button variant="ghost" size="icon" aria-label="Cancel and delete partial file" onClick={() => void g.cancelDownload(job.jobId)}>
                   <X className="h-4 w-4" />
                 </Button>
               </Tooltip>
             </>
           ) : job.state === 'error' || job.state === 'cancelled' ? (
             <>
-              <Tooltip content="Retry">
-                <Button variant="ghost" size="icon" onClick={() => void g.resumeDownload(job.jobId)}>
+              {/* A cancel deletes the partial, so retrying a Stopped job starts from zero. */}
+              <Tooltip content={job.state === 'cancelled' ? 'Start over' : 'Retry'}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={job.state === 'cancelled' ? 'Start over' : 'Retry'}
+                  onClick={() => void g.resumeDownload(job.jobId)}
+                >
                   <RotateCcw className="h-4 w-4" />
                 </Button>
               </Tooltip>
               <Tooltip content="Remove from list">
-                <Button variant="ghost" size="icon" onClick={() => void g.removeDownload(job.jobId)}>
+                <Button variant="ghost" size="icon" aria-label="Remove from list" onClick={() => void g.removeDownload(job.jobId)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </Tooltip>
             </>
           ) : (
             <>
+              {job.destination.kind === 'lmstudio' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => void g.openInLmStudio(job.repoId)}
+                  data-testid={`open-lmstudio-${job.jobId}`}
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  Open in LM Studio
+                </Button>
+              )}
               <Tooltip content="Reveal in Finder">
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => void g.revealPath(`${job.jobDir}/${job.files[0]?.path ?? ''}`)}
+                  aria-label="Reveal in Finder"
+                  onClick={() =>
+                    void g.revealPath(
+                      job.files.length === 1 ? `${job.jobDir}/${job.files[0].path}` : job.jobDir
+                    )
+                  }
                 >
                   <FolderOpen className="h-4 w-4" />
                 </Button>
               </Tooltip>
               <Tooltip content="Remove from list">
-                <Button variant="ghost" size="icon" onClick={() => void g.removeDownload(job.jobId)}>
+                <Button variant="ghost" size="icon" aria-label="Remove from list" onClick={() => void g.removeDownload(job.jobId)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </Tooltip>
@@ -202,6 +236,17 @@ export function DownloadRow({
               >
                 <RotateCcw className="h-3 w-3" />
                 Retry
+              </Button>
+            )}
+            {line.showDashboard && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void g.openExternal(EXO_DASHBOARD_URL)}
+                data-testid={`exo-dashboard-${job.jobId}`}
+              >
+                <ExternalLink className="h-3 w-3" />
+                Open exo dashboard
               </Button>
             )}
           </div>

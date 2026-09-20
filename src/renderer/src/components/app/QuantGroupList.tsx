@@ -1,9 +1,12 @@
-import { ArrowDownToLine, Check, Loader2 } from 'lucide-react'
+import { ArrowDownToLine, Check, Loader2, Play } from 'lucide-react'
+import { useMemo } from 'react'
 import { formatBytes } from '@shared/format'
-import type { QuantGroup } from '@shared/quant'
+import { recommendQuant, type QuantGroup } from '@shared/quant'
 import type { DownloadJobSnapshot } from '@shared/types'
+import { useSystemInfo } from '@/lib/queries'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Tooltip } from '@/components/ui/tooltip'
 import { RamFitBadge } from './RamFitBadge'
 
 interface QuantGroupListProps {
@@ -13,13 +16,27 @@ interface QuantGroupListProps {
   downloadDisabled: boolean
 }
 
-function JobStateChip({ job }: { job: DownloadJobSnapshot }) {
+/** Shared job-state chip; also used for the whole-repo row in the detail sheet. */
+export function JobStateChip({ job }: { job: DownloadJobSnapshot }) {
   switch (job.state) {
     case 'completed':
       return (
-        <Badge variant="success">
-          <Check className="h-3 w-3" /> Downloaded
-        </Badge>
+        <span className="flex items-center gap-1.5">
+          <Badge variant="success">
+            <Check className="h-3 w-3" /> Downloaded
+          </Badge>
+          {job.destination.kind === 'lmstudio' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void window.hfgui.openInLmStudio(job.repoId)}
+              data-testid={`use-${job.jobId}`}
+            >
+              <Play className="h-3 w-3" />
+              Use
+            </Button>
+          )}
+        </span>
       )
     case 'downloading':
     case 'verifying': {
@@ -33,15 +50,33 @@ function JobStateChip({ job }: { job: DownloadJobSnapshot }) {
     case 'queued':
       return <Badge variant="accent">Queued</Badge>
     case 'paused':
-      return <Badge variant="warning">Paused</Badge>
+      return (
+        <span className="flex items-center gap-1.5">
+          <Badge variant="warning">Paused</Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Resume"
+            onClick={() => void window.hfgui.resumeDownload(job.jobId)}
+          >
+            <Play className="h-3 w-3" />
+            Resume
+          </Button>
+        </span>
+      )
     default:
       return null
   }
 }
 
 export function QuantGroupList({ groups, jobFor, onDownload, downloadDisabled }: QuantGroupListProps) {
+  const { data: sys } = useSystemInfo()
   const main = groups.filter((g) => !g.isExtra)
   const extras = groups.filter((g) => g.isExtra)
+  const recommendedKey = useMemo(
+    () => (sys ? recommendQuant(groups, sys.totalMemoryBytes) : null),
+    [groups, sys]
+  )
 
   const renderRow = (group: QuantGroup) => {
     const job = jobFor(group)
@@ -54,8 +89,26 @@ export function QuantGroupList({ groups, jobFor, onDownload, downloadDisabled }:
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="font-mono text-[13px] font-semibold">{group.label}</span>
-            {group.partCount > 1 && (
+            {group.partCount > 1 && group.isComplete && (
               <Badge variant="outline">{group.partCount} parts</Badge>
+            )}
+            {!group.isComplete && (
+              <Tooltip content="This variant is missing parts on Hugging Face and would not load — check the repo.">
+                <span>
+                  <Badge variant="danger">
+                    {group.partCount}/{group.expectedParts} parts
+                  </Badge>
+                </span>
+              </Tooltip>
+            )}
+            {group.key === recommendedKey && (
+              <Tooltip
+                content={`Best quality-for-size that fits your ${formatBytes(sys?.totalMemoryBytes ?? 0)} RAM`}
+              >
+                <span>
+                  <Badge variant="accent">Recommended</Badge>
+                </span>
+              </Tooltip>
             )}
           </div>
           <div className="text-faint truncate font-mono text-[11px]" title={group.key}>
@@ -66,7 +119,7 @@ export function QuantGroupList({ groups, jobFor, onDownload, downloadDisabled }:
         <RamFitBadge sizeBytes={group.totalSize} />
         {busy && job ? (
           <JobStateChip job={job} />
-        ) : (
+        ) : group.isComplete ? (
           <Button
             variant="primary"
             size="sm"
@@ -77,7 +130,7 @@ export function QuantGroupList({ groups, jobFor, onDownload, downloadDisabled }:
             <ArrowDownToLine className="h-3.5 w-3.5" />
             Get
           </Button>
-        )}
+        ) : null}
       </div>
     )
   }

@@ -26,7 +26,8 @@ const api: HfguiApi = {
   revealPath: (absPath) => ipcRenderer.invoke(IPC.revealPath, absPath),
   checkDiskSpace: (dir) => ipcRenderer.invoke(IPC.checkDiskSpace, dir),
   getSystemInfo: () => ipcRenderer.invoke(IPC.getSystemInfo),
-  openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url)
+  openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
+  openInLmStudio: (repoId) => ipcRenderer.invoke(IPC.openInLmStudio, repoId)
 }
 
 contextBridge.exposeInMainWorld('hfgui', api)

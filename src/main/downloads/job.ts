@@ -1,5 +1,5 @@
 import { mkdir, readdir, rm, rmdir, stat, unlink } from 'fs/promises'
-import { join } from 'path'
+import { safeJoin } from '../pathSafety'
 import type {
   DownloadEvent,
   DownloadJobSnapshot,
@@ -69,7 +69,13 @@ export class DownloadJob {
     this.format = req.format
     this.destination = req.destination
     this.jobDir = jobDir
-    this.files = req.files.map((f) => ({ path: f.path, size: f.size, bytesDone: 0, state: 'pending' }))
+    this.files = req.files.map((f) => ({
+      path: f.path,
+      size: f.size,
+      sha256: f.sha256 ?? null,
+      bytesDone: 0,
+      state: 'pending'
+    }))
     this.createdAt = Date.now()
     this.deps = deps
   }
@@ -81,7 +87,7 @@ export class DownloadJob {
         revision: snap.revision,
         displayName: snap.displayName,
         format: snap.format,
-        files: snap.files.map((f) => ({ path: f.path, size: f.size })),
+        files: snap.files.map((f) => ({ path: f.path, size: f.size, sha256: f.sha256 ?? null })),
         destination: snap.destination
       },
       snap.jobDir,
@@ -141,8 +147,10 @@ export class DownloadJob {
     this.deps.persist()
   }
 
+  // safeJoin also guards restore-from-snapshot: a tampered downloads.json
+  // cannot place files outside the job dir.
   finalPathFor(filePath: string): string {
-    return join(this.jobDir, ...filePath.split('/'))
+    return safeJoin(this.jobDir, filePath)
   }
 
   private emitProgress(force = false): void {
@@ -194,6 +202,7 @@ export class DownloadJob {
               url: resolveUrl(this.repoId, this.revision, file.path),
               destPath: this.finalPathFor(file.path),
               expectedSize: file.size,
+              sha256: file.sha256 ?? null,
               token,
               signal,
               onProgress: (bytesDone) => {
@@ -282,7 +291,11 @@ export class DownloadJob {
   private async cleanupPartials(): Promise<void> {
     for (const file of this.files) {
       if (file.state === 'done') continue
-      await unlink(`${this.finalPathFor(file.path)}.partial`).catch(() => {})
+      try {
+        await unlink(`${this.finalPathFor(file.path)}.partial`)
+      } catch {
+        /* best-effort — also swallows safeJoin throws on tampered snapshots */
+      }
     }
     // Remove the job dir if we left nothing useful behind.
     try {

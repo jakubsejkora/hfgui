@@ -6,7 +6,7 @@ import type {
   ExoRegistration,
   StartDownloadResult
 } from '@shared/types'
-import { checkDiskSpace } from '../system'
+import { checkDiskSpace, volumeIdFor } from '../system'
 import { DownloadJob, type JobDeps } from './job'
 import { Persistence } from './persistence'
 
@@ -16,6 +16,9 @@ export interface ManagerDeps {
   getMaxConcurrent(): number
   getAutoResume(): boolean
   registerInExo(repoId: string): Promise<ExoRegistration>
+  /** Injectable for tests; default to the real fs-backed implementations. */
+  checkDiskSpace?: typeof checkDiskSpace
+  volumeIdFor?: typeof volumeIdFor
 }
 
 const ACTIVE_STATES = new Set(['queued', 'downloading', 'verifying'])
@@ -106,8 +109,21 @@ export class DownloadManager {
     }
 
     const totalBytes = req.files.reduce((sum, f) => sum + f.size, 0)
-    const { freeBytes } = await checkDiskSpace(jobDir).catch(() => ({ freeBytes: Infinity }))
-    if (freeBytes < totalBytes * 1.05) {
+    const diskCheck = this.deps.checkDiskSpace ?? checkDiskSpace
+    const { freeBytes } = await diskCheck(jobDir).catch(() => ({ freeBytes: Infinity }))
+    // Count bytes in-flight jobs on the same volume still have to write, so
+    // individually-fitting concurrent jobs can't jointly overrun the disk.
+    const volumeId = this.deps.volumeIdFor ?? volumeIdFor
+    const vol = await volumeId(jobDir)
+    let committedBytes = 0
+    for (const job of this.jobs.values()) {
+      if (!ACTIVE_STATES.has(job.state)) continue
+      const jobVol = await volumeId(job.jobDir)
+      if (vol === null || jobVol === null || jobVol === vol) {
+        committedBytes += Math.max(0, job.totalBytes - job.bytesDone)
+      }
+    }
+    if (freeBytes < totalBytes * 1.05 + committedBytes) {
       return {
         ok: false,
         code: 'disk-full',
@@ -177,6 +193,7 @@ export class DownloadManager {
     const job = this.jobs.get(jobId)
     if (!job || job.isActive) return
     this.jobs.delete(jobId)
+    this.emit({ type: 'removed', jobId })
     this.persistence.schedule()
   }
 

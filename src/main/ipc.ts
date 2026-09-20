@@ -3,6 +3,7 @@ import { IPC } from '@shared/ipc'
 import type { DownloadRequest, Settings } from '@shared/types'
 import { adapters, getDestinations } from './destinations'
 import type { DownloadManager } from './downloads/manager'
+import { isSafeRelPath, isValidRepoId } from './pathSafety'
 import type { SettingsStore } from './settings'
 import { checkDiskSpace, getSystemInfo } from './system'
 
@@ -16,7 +17,12 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
 
   ipcMain.handle(IPC.startDownload, async (_e, req: DownloadRequest) => {
     const adapter = adapters[req.destination.kind]
-    if (!adapter || !req.repoId.includes('/') || !req.destination.baseDir) {
+    if (
+      !adapter ||
+      !isValidRepoId(req.repoId) ||
+      !req.destination.baseDir ||
+      !req.files.every((f) => isSafeRelPath(f.path))
+    ) {
       return { ok: false, code: 'invalid', message: 'Invalid download request' }
     }
     if (req.destination.kind === 'custom') {
@@ -69,5 +75,10 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
   ipcMain.handle(IPC.openExternal, (_e, url: string) => {
     if (/^https?:\/\//i.test(url)) return shell.openExternal(url)
     return Promise.resolve()
+  })
+  // Same deep link HF's "Use this model" button emits; launches or focuses LM Studio.
+  ipcMain.handle(IPC.openInLmStudio, (_e, repoId: string) => {
+    if (!isValidRepoId(repoId)) return Promise.resolve()
+    return shell.openExternal(`lmstudio://open_from_hf?model=${repoId}`)
   })
 }

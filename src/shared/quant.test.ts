@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groupGgufFiles, quantLabelFor } from './quant'
+import { groupGgufFiles, quantLabelFor, recommendQuant } from './quant'
 
 describe('quantLabelFor', () => {
   it('parses common quant tokens', () => {
@@ -67,5 +67,55 @@ describe('groupGgufFiles', () => {
       'm-Q4_K_M-00001-of-00002.gguf',
       'm-Q4_K_M-00002-of-00002.gguf'
     ])
+  })
+
+  it('marks complete multi-part and single-file groups as complete', () => {
+    const { groups } = groupGgufFiles([
+      { path: 'm-Q4_K_M-00001-of-00002.gguf', size: 1 },
+      { path: 'm-Q4_K_M-00002-of-00002.gguf', size: 1 },
+      { path: 'm-Q8_0.gguf', size: 1 }
+    ])
+    expect(groups.every((g) => g.isComplete)).toBe(true)
+  })
+
+  it('marks a group with a missing shard as incomplete', () => {
+    const { groups } = groupGgufFiles([
+      { path: 'm-IQ1_S-00001-of-00003.gguf', size: 1 },
+      { path: 'm-IQ1_S-00003-of-00003.gguf', size: 1 }
+    ])
+    expect(groups[0].isComplete).toBe(false)
+    expect(groups[0].partCount).toBe(2)
+    expect(groups[0].expectedParts).toBe(3)
+  })
+})
+
+describe('recommendQuant', () => {
+  const GB = 1024 ** 3
+  const groups = groupGgufFiles([
+    { path: 'm-Q2_K.gguf', size: 3 * GB },
+    { path: 'm-Q4_K_M.gguf', size: 5 * GB },
+    { path: 'm-Q8_0.gguf', size: 9 * GB },
+    { path: 'mmproj-F16.gguf', size: 1 * GB }
+  ]).groups
+
+  it('prefers Q4_K_M when it fits', () => {
+    expect(recommendQuant(groups, 16 * GB)).toBe('m-Q4_K_M.gguf')
+  })
+
+  it('falls back to the largest fitting quant when preferred labels do not fit', () => {
+    // 6 GB RAM: fit limit 4.2 GB — only Q2_K fits
+    expect(recommendQuant(groups, 6 * GB)).toBe('m-Q2_K.gguf')
+  })
+
+  it('never recommends extras and returns null when nothing fits', () => {
+    expect(recommendQuant(groups, 1 * GB)).toBeNull()
+  })
+
+  it('skips incomplete groups', () => {
+    const incomplete = groupGgufFiles([
+      { path: 'm-Q4_K_M-00001-of-00002.gguf', size: 1 * GB },
+      { path: 'm-Q6_K.gguf', size: 2 * GB }
+    ]).groups
+    expect(recommendQuant(incomplete, 64 * GB)).toBe('m-Q6_K.gguf')
   })
 })

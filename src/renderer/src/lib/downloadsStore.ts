@@ -32,6 +32,14 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
       set((s) => ({ jobs: { ...s.jobs, [ev.jobId]: ev.snapshot } }))
       return
     }
+    if (ev.type === 'removed') {
+      set((s) => {
+        const { [ev.jobId]: _job, ...jobs } = s.jobs
+        const { [ev.jobId]: _progress, ...progress } = s.progress
+        return { jobs, progress }
+      })
+      return
+    }
     if (ev.type === 'progress') {
       const job = get().jobs[ev.jobId]
       set((s) => ({

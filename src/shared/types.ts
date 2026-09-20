@@ -5,6 +5,8 @@ export type Theme = 'system' | 'light' | 'dark'
 export interface TreeFile {
   path: string
   size: number
+  /** sha256 from HF LFS metadata; null for small non-LFS files (git sha1 only). */
+  sha256?: string | null
 }
 
 export interface DownloadDestination {
@@ -49,12 +51,15 @@ export type DownloadErrorCode =
   | 'disk-full'
   | 'network'
   | 'size-mismatch'
+  | 'checksum-mismatch'
   | 'http'
   | 'unknown'
 
 export interface FileProgress {
   path: string
   size: number
+  /** sha256 from HF LFS metadata; null/absent = size-only verification. */
+  sha256?: string | null
   bytesDone: number
   state: 'pending' | 'active' | 'done'
 }
@@ -81,6 +86,7 @@ export interface DownloadJobSnapshot {
 
 export type DownloadEvent =
   | { type: 'state'; jobId: string; snapshot: DownloadJobSnapshot }
+  | { type: 'removed'; jobId: string }
   | {
       type: 'progress'
       jobId: string
