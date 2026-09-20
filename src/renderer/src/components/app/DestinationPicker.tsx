@@ -1,9 +1,15 @@
-import { FolderOpen, HardDrive } from 'lucide-react'
+import { ExternalLink, FolderOpen, HardDrive } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { formatBytes } from '@shared/format'
 import type { DestinationInfo, DownloadDestination, ModelFormat } from '@shared/types'
 import { useDestinations } from '@/lib/queries'
+import { toast } from '@/lib/toastStore'
 import { cn } from '@/lib/utils'
+
+const INSTALL_URL: Partial<Record<DestinationInfo['kind'], string>> = {
+  lmstudio: 'https://lmstudio.ai',
+  exo: 'https://github.com/exo-explore/exo'
+}
 
 interface DestinationPickerProps {
   format: ModelFormat
@@ -19,7 +25,7 @@ function shortPath(p: string): string {
 function optionState(
   info: DestinationInfo,
   format: ModelFormat
-): { disabled: boolean; hint: string } {
+): { disabled: boolean; hint: string; installUrl?: string } {
   if (info.kind === 'exo' && format !== 'mlx') {
     return { disabled: true, hint: 'exo runs MLX models only' }
   }
@@ -27,7 +33,11 @@ function optionState(
     return { disabled: false, hint: info.path ? shortPath(info.path) : 'Choose a folder…' }
   }
   if (!info.path) {
-    return { disabled: true, hint: 'Not found on this Mac' }
+    return {
+      disabled: false,
+      hint: info.kind === 'lmstudio' ? 'Not installed — get it free' : 'Not installed — get it',
+      installUrl: INSTALL_URL[info.kind]
+    }
   }
   return { disabled: false, hint: shortPath(info.path) }
 }
@@ -57,10 +67,18 @@ export function DestinationPicker({ format, value, onChange }: DestinationPicker
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-3 gap-2">
         {destinations.map((info) => {
-          const { disabled, hint } = optionState(info, format)
+          const { disabled, hint, installUrl } = optionState(info, format)
           const selected = value?.kind === info.kind
           const onClick = (): void => {
             if (disabled) return
+            if (installUrl) {
+              void window.hfgui.openExternal(installUrl)
+              toast(
+                'info',
+                `Once ${info.label} is installed, hfgui detects it automatically — come back and pick it.`
+              )
+              return
+            }
             if (info.kind === 'custom' && !info.path) {
               void pickCustom()
               return
@@ -78,10 +96,14 @@ export function DestinationPicker({ format, value, onChange }: DestinationPicker
                 selected
                   ? 'border-accent/60 bg-accent/10'
                   : 'border-border bg-surface-2 hover:border-border-strong',
-                disabled && 'cursor-not-allowed opacity-40'
+                disabled && 'cursor-not-allowed opacity-40',
+                installUrl && 'opacity-70 hover:opacity-100'
               )}
             >
-              <span className="text-text text-[13px] font-semibold">{info.label}</span>
+              <span className="text-text flex items-center gap-1 text-[13px] font-semibold">
+                {info.label}
+                {installUrl && <ExternalLink className="h-3 w-3" />}
+              </span>
               <span className="text-faint truncate text-[11px]">{hint}</span>
             </button>
           )

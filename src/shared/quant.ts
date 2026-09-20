@@ -10,6 +10,8 @@ export interface QuantGroup {
   partCount: number
   /** Expected part count from "-of-0000N" suffix, if the file is multi-part. */
   expectedParts: number | null
+  /** False when a multi-part file is missing (or duplicates) shards on the Hub. */
+  isComplete: boolean
   /** mmproj / imatrix companion files rather than the model itself. */
   isExtra: boolean
 }
@@ -40,6 +42,7 @@ function isExtraFile(path: string): boolean {
  */
 export function groupGgufFiles(files: TreeFile[]): { groups: QuantGroup[]; others: TreeFile[] } {
   const groups = new Map<string, QuantGroup>()
+  const partsSeen = new Map<string, Set<number>>()
   const others: TreeFile[] = []
 
   for (const file of files) {
@@ -58,10 +61,13 @@ export function groupGgufFiles(files: TreeFile[]): { groups: QuantGroup[]; other
         totalSize: 0,
         partCount: 0,
         expectedParts: partMatch ? parseInt(partMatch[2], 10) : null,
+        isComplete: true,
         isExtra: isExtraFile(file.path)
       }
       groups.set(key, group)
+      partsSeen.set(key, new Set())
     }
+    if (partMatch) partsSeen.get(key)!.add(parseInt(partMatch[1], 10))
     group.files.push(file)
     group.totalSize += file.size
     group.partCount += 1
@@ -69,6 +75,10 @@ export function groupGgufFiles(files: TreeFile[]): { groups: QuantGroup[]; other
 
   for (const group of groups.values()) {
     group.files.sort((a, b) => a.path.localeCompare(b.path))
+    if (group.expectedParts !== null) {
+      const seen = partsSeen.get(group.key)!
+      group.isComplete = seen.size === group.expectedParts && group.partCount === group.expectedParts
+    }
   }
 
   const sorted = [...groups.values()].sort((a, b) => {
@@ -76,4 +86,41 @@ export function groupGgufFiles(files: TreeFile[]): { groups: QuantGroup[]; other
     return a.totalSize - b.totalSize
   })
   return { groups: sorted, others }
+}
+
+/** Weights must fit in unified memory with headroom for OS, context, and runtime. */
+export const RAM_FIT_RATIO = 0.7
+
+/**
+ * Quant labels in preference order. Q4_K_M-class is the community sweet spot:
+ * near-Q5 quality at two-thirds the size; below Q4 quality drops off fast.
+ */
+const QUANT_PREFERENCE = [
+  'Q4_K_M',
+  'Q4_K_S',
+  'IQ4_XS',
+  'Q5_K_M',
+  'Q5_K_S',
+  'Q4_0',
+  'Q6_K',
+  'Q8_0',
+  'IQ3_M',
+  'Q3_K_M'
+]
+
+/**
+ * Pick the quant to recommend for this machine: the best-regarded label whose
+ * total size fits in RAM with headroom, else the largest fitting group.
+ * Returns the group key, or null when nothing fits (or there are no groups).
+ */
+export function recommendQuant(groups: QuantGroup[], ramBytes: number): string | null {
+  const fitting = groups.filter(
+    (g) => !g.isExtra && g.isComplete && g.totalSize > 0 && g.totalSize <= ramBytes * RAM_FIT_RATIO
+  )
+  if (fitting.length === 0) return null
+  for (const label of QUANT_PREFERENCE) {
+    const match = fitting.find((g) => g.label === label)
+    if (match) return match.key
+  }
+  return fitting.reduce((best, g) => (g.totalSize > best.totalSize ? g : best)).key
 }

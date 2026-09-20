@@ -28,7 +28,8 @@ export const IPC = {
   revealPath: 'hfgui:reveal-path',
   checkDiskSpace: 'hfgui:check-disk-space',
   getSystemInfo: 'hfgui:get-system-info',
-  openExternal: 'hfgui:open-external'
+  openExternal: 'hfgui:open-external',
+  openInLmStudio: 'hfgui:open-in-lmstudio'
 } as const
 
 export interface HfguiApi {
@@ -54,4 +55,6 @@ export interface HfguiApi {
   checkDiskSpace(dir: string): Promise<DiskSpace>
   getSystemInfo(): Promise<SystemInfo>
   openExternal(url: string): Promise<void>
+  /** Launch LM Studio focused on the given repo via its open_from_hf deep link. */
+  openInLmStudio(repoId: string): Promise<void>
 }

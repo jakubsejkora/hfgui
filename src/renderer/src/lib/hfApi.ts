@@ -80,7 +80,7 @@ async function hfFetch(url: string): Promise<Response> {
       res.status === 429
         ? 'Hugging Face rate limit reached — try again in a few minutes'
         : res.status === 401 || res.status === 403
-          ? 'This model is gated — accept its license on huggingface.co and add your token in Settings'
+          ? 'This model is gated — accept its license on huggingface.co and add your token in Settings (or your token may lack access)'
           : `Hugging Face API error (HTTP ${res.status})`
     throw new HfApiError(res.status, message)
   }
@@ -232,7 +232,12 @@ export async function getModelTree(repoId: string, revision: string): Promise<Tr
     const items: any[] = await res.json()
     for (const item of items) {
       if (item.type === 'file') {
-        files.push({ path: item.path, size: item.lfs?.size ?? item.size ?? 0 })
+        files.push({
+          path: item.path,
+          size: item.lfs?.size ?? item.size ?? 0,
+          // lfs.oid is a sha256; non-LFS files only have a git sha1, useless for content checks
+          sha256: item.lfs?.oid ?? null
+        })
       }
     }
     url = parseNextLink(res.headers.get('Link'))

@@ -49,7 +49,7 @@ function createWindow(): BrowserWindow {
  * page origin is file:// — normalize CORS on HF responses so fetch works in
  * both dev and production, and expose the Link header used for pagination.
  */
-function patchHuggingFaceCors(): void {
+function patchHuggingFaceSession(settings: SettingsStore): void {
   const filter = { urls: ['https://huggingface.co/*'] }
   session.defaultSession.webRequest.onHeadersReceived(filter, (details, callback) => {
     const headers = details.responseHeaders ?? {}
@@ -63,6 +63,22 @@ function patchHuggingFaceCors(): void {
     headers['Access-Control-Expose-Headers'] = ['Link']
     callback({ responseHeaders: headers })
   })
+
+  // Attach the HF token to Hub API calls at the network layer so gated repos
+  // are browsable without ever exposing the token to the renderer. Scoped to
+  // /api/* only: those endpoints never redirect to the CDN, so the token
+  // cannot leak cross-origin. Do NOT widen this to huggingface.co/* —
+  // /resolve/ responses 302 to the CDN.
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['https://huggingface.co/api/*'] },
+    (details, callback) => {
+      const token = settings.getToken()
+      if (token && !details.requestHeaders['Authorization']) {
+        details.requestHeaders['Authorization'] = `Bearer ${token}`
+      }
+      callback({ requestHeaders: details.requestHeaders })
+    }
+  )
 }
 
 const gotLock = app.requestSingleInstanceLock()
@@ -78,9 +94,9 @@ if (!gotLock) {
   })
 
   void app.whenReady().then(async () => {
-    patchHuggingFaceCors()
-
     const settings = new SettingsStore(app.getPath('userData'))
+    patchHuggingFaceSession(settings)
+
     // Drives the renderer's prefers-color-scheme; set before the window exists.
     nativeTheme.themeSource = settings.get().theme
     manager = new DownloadManager({

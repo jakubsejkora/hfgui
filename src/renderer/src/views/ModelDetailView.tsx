@@ -14,7 +14,7 @@ import { Sheet, SheetTitle } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DestinationPicker } from '@/components/app/DestinationPicker'
 import { FileList } from '@/components/app/FileList'
-import { QuantGroupList } from '@/components/app/QuantGroupList'
+import { JobStateChip, QuantGroupList } from '@/components/app/QuantGroupList'
 import { RamFitBadge } from '@/components/app/RamFitBadge'
 import { TokenDialog } from '@/components/app/TokenDialog'
 
@@ -90,6 +90,13 @@ export function ModelDetailView() {
   }
 
   const downloadGroup = (group: QuantGroup): void => {
+    if (!group.isComplete) {
+      toast(
+        'error',
+        `${group.label} is missing parts on Hugging Face (${group.partCount}/${group.expectedParts}) — downloading it would produce a broken model`
+      )
+      return
+    }
     void start(group.files, `${model!.name} · ${group.label}`)
   }
 
@@ -186,12 +193,18 @@ export function ModelDetailView() {
                       : `Could not load files: ${(tree.error as Error).message}`}
                   </p>
                 ) : gguf && gguf.groups.length > 0 ? (
-                  <QuantGroupList
-                    groups={gguf.groups}
-                    jobFor={(g) => jobForFiles(g.files)}
-                    onDownload={downloadGroup}
-                    downloadDisabled={!destination}
-                  />
+                  <>
+                    <p className="text-faint -mt-1 text-[11px] leading-relaxed">
+                      Q4_K_M-class quants are the usual sweet spot — smaller saves RAM but loses
+                      quality, larger is slower and heavier.
+                    </p>
+                    <QuantGroupList
+                      groups={gguf.groups}
+                      jobFor={(g) => jobForFiles(g.files)}
+                      onDownload={downloadGroup}
+                      downloadDisabled={!destination}
+                    />
+                  </>
                 ) : (
                   <div className="flex flex-col gap-3">
                     <div className="border-border bg-surface-2 flex items-center gap-3 rounded-xl border px-4 py-3">
@@ -207,14 +220,8 @@ export function ModelDetailView() {
                       <RamFitBadge sizeBytes={mlxTotal} />
                       {(() => {
                         const job = jobForFiles(mlxFiles)
-                        return job && job.state !== 'completed' ? (
-                          <Badge variant="accent">
-                            {job.totalBytes > 0
-                              ? `${Math.round((job.bytesDone / job.totalBytes) * 100)}%`
-                              : job.state}
-                          </Badge>
-                        ) : job?.state === 'completed' ? (
-                          <Badge variant="success">Downloaded</Badge>
+                        return job ? (
+                          <JobStateChip job={job} />
                         ) : (
                           <Button
                             variant="primary"
@@ -246,8 +253,8 @@ export function ModelDetailView() {
               </section>
 
               <p className="text-faint mt-auto text-[11px] leading-relaxed">
-                LM Studio picks up new models when you reopen it (or its My Models page). exo
-                loads complete model folders automatically.
+                Finished LM Studio downloads get an Open in LM Studio button — no relaunch
+                needed. exo models register automatically and appear in its dashboard.
               </p>
             </div>
           </>

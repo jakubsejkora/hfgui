@@ -21,6 +21,6 @@ export const exoAdapter: PathAdapter = {
     return null
   },
   resolveJobDir(repoId, baseDir) {
-    return join(baseDir, repoId.replace('/', '--'))
+    return join(baseDir, repoId.replaceAll('/', '--'))
   }
 }

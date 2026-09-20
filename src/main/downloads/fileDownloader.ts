@@ -1,4 +1,5 @@
-import { createWriteStream } from 'fs'
+import { createHash, type Hash } from 'crypto'
+import { createReadStream, createWriteStream } from 'fs'
 import { mkdir, open, rename, stat, unlink } from 'fs/promises'
 import { dirname } from 'path'
 import { Readable, Transform } from 'stream'
@@ -10,6 +11,8 @@ export interface FileDownloadOptions {
   /** Final absolute path; data streams to `<destPath>.partial` first. */
   destPath: string
   expectedSize: number
+  /** Expected sha256 (HF LFS oid); null = size-only verification. */
+  sha256: string | null
   token: string | null
   signal: AbortSignal
   /** Absolute bytes written for this file (including pre-existing partial bytes). */
@@ -22,6 +25,28 @@ async function sizeOf(path: string): Promise<number | null> {
   } catch {
     return null
   }
+}
+
+/** Feed a file's current contents into a hash (priming for resumed downloads). */
+async function hashExisting(path: string, hash: Hash, signal: AbortSignal): Promise<void> {
+  for await (const chunk of createReadStream(path, { signal })) {
+    hash.update(chunk as Buffer)
+  }
+}
+
+async function checksumGuard(
+  partialPath: string,
+  digest: string,
+  expected: string
+): Promise<void> {
+  if (digest === expected) return
+  // Partial is corrupt; delete it so the retry restarts from zero.
+  await unlink(partialPath).catch(() => {})
+  throw new DownloadError(
+    'checksum-mismatch',
+    `Checksum mismatch (expected ${expected.slice(0, 12)}…, got ${digest.slice(0, 12)}…)`,
+    true
+  )
 }
 
 async function finalize(partialPath: string, destPath: string): Promise<void> {
@@ -50,10 +75,12 @@ function classify(e: unknown): DownloadError {
  * Throws DownloadError; AbortError passes through untouched (pause/cancel).
  */
 export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
-  const { url, destPath, expectedSize, token, signal, onProgress } = opts
+  const { url, destPath, expectedSize, sha256, token, signal, onProgress } = opts
   const partialPath = `${destPath}.partial`
 
-  // Already fully downloaded in a previous run?
+  // Already fully downloaded in a previous run? Size-only on purpose: the file
+  // was hash-verified before its rename, or pre-existed from another tool —
+  // re-hashing 40 GB models on every resume would be pathological.
   const finalSize = await sizeOf(destPath)
   if (finalSize === expectedSize) {
     onProgress(expectedSize)
@@ -68,6 +95,12 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
     startAt = 0
   }
   if (startAt === expectedSize) {
+    // Fully written but not finalized (crash between verify and rename).
+    if (sha256) {
+      const hash = createHash('sha256')
+      await hashExisting(partialPath, hash, signal)
+      await checksumGuard(partialPath, hash.digest('hex'), sha256)
+    }
     await finalize(partialPath, destPath)
     onProgress(expectedSize)
     return
@@ -115,10 +148,24 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
     startAt = 0
   }
 
+  // Hash while streaming; on resume, prime with the partial's existing bytes
+  // (a one-time prefix read that briefly delays the network start).
+  const hash = sha256 ? createHash('sha256') : null
+  if (hash && append) {
+    try {
+      await hashExisting(partialPath, hash, signal)
+    } catch (e) {
+      if (isAbortError(e)) throw e
+      await unlink(partialPath).catch(() => {})
+      throw new DownloadError('unknown', 'Could not read partial file, restarting', true)
+    }
+  }
+
   let bytesDone = startAt
   onProgress(bytesDone)
   const counter = new Transform({
     transform(chunk: Buffer, _enc, cb) {
+      hash?.update(chunk)
       bytesDone += chunk.length
       onProgress(bytesDone)
       cb(null, chunk)
@@ -144,6 +191,9 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
       `Downloaded ${written ?? 0} bytes, expected ${expectedSize}`,
       true
     )
+  }
+  if (hash && sha256) {
+    await checksumGuard(partialPath, hash.digest('hex'), sha256)
   }
   await finalize(partialPath, destPath)
 }

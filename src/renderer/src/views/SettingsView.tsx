@@ -1,4 +1,4 @@
-import { FolderSearch, KeyRound, RotateCcw, SunMoon } from 'lucide-react'
+import { ExternalLink, FolderSearch, KeyRound, RotateCcw, SunMoon } from 'lucide-react'
 import { useState } from 'react'
 import type { DestinationKind, Settings, Theme } from '@shared/types'
 import { useDestinations, useInvalidate, useSettings, useTokenStatus } from '@/lib/queries'
@@ -26,6 +26,11 @@ const DIR_BLURB: Record<DestinationKind, string> = {
   lmstudio: 'GGUF and MLX models land here as {publisher}/{model}/ — LM Studio finds them on relaunch.',
   exo: 'MLX models land here as {org}--{model}/ — exo loads complete folders automatically.',
   custom: 'Fallback folder for downloads that aren’t for a specific app.'
+}
+
+const INSTALL_URL: Partial<Record<DestinationKind, string>> = {
+  lmstudio: 'https://lmstudio.ai',
+  exo: 'https://github.com/exo-explore/exo'
 }
 
 function DirectoryRow({ kind, label }: { kind: DestinationKind; label: string }) {
@@ -67,10 +72,20 @@ function DirectoryRow({ kind, label }: { kind: DestinationKind; label: string })
       <div className="flex shrink-0 items-center gap-1">
         {override && kind !== 'custom' && (
           <Tooltip content="Reset to auto-detected location">
-            <Button variant="ghost" size="icon" onClick={() => void update(null)}>
+            <Button variant="ghost" size="icon" aria-label="Reset to auto-detected location" onClick={() => void update(null)}>
               <RotateCcw className="h-4 w-4" />
             </Button>
           </Tooltip>
+        )}
+        {info?.source === 'none' && INSTALL_URL[kind] && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void window.hfgui.openExternal(INSTALL_URL[kind]!)}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Get {label}
+          </Button>
         )}
         <Button size="sm" onClick={() => void browse()}>
           <FolderSearch className="h-3.5 w-3.5" />

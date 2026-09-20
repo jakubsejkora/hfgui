@@ -55,7 +55,10 @@ export function useDestinations() {
   return useQuery({
     queryKey: ['destinations'],
     queryFn: () => window.hfgui.getDestinations(),
-    staleTime: 30_000
+    // Re-detect when the user returns after installing LM Studio/exo,
+    // so the "Not installed" tile lights up without a restart.
+    refetchOnWindowFocus: true,
+    staleTime: 10_000
   })
 }
 
