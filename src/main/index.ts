@@ -1,5 +1,6 @@
 import { BrowserWindow, app, nativeTheme, session, shell } from 'electron'
 import { join } from 'path'
+import { effectiveSpeedLimit } from '@shared/speedLimit'
 import { registerModelWithExo } from './destinations/exoApi'
 import { DownloadManager } from './downloads/manager'
 import { registerIpc } from './ipc'
@@ -19,9 +20,9 @@ function createWindow(): BrowserWindow {
     minWidth: 980,
     minHeight: 640,
     show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b0b0e' : '#f4f4f6',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#08080a' : '#f5f5f7',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    trafficLightPosition: { x: 18, y: 18 },
+    trafficLightPosition: { x: 20, y: 21 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -34,6 +35,16 @@ function createWindow(): BrowserWindow {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // Dropping a link onto a renderer navigates it by default, which would
+  // replace the whole app with a web page and no way back. The renderer also
+  // preventDefault()s drops; this is the backstop.
+  win.webContents.on('will-navigate', (event, url) => {
+    const devServer = process.env['ELECTRON_RENDERER_URL']
+    if (devServer && url.startsWith(devServer)) return
+    event.preventDefault()
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
@@ -104,10 +115,17 @@ if (!gotLock) {
       getToken: () => settings.getToken(),
       getMaxConcurrent: () => settings.get().maxConcurrentJobs,
       getAutoResume: () => settings.get().autoResume,
+      getSpeedLimit: () => effectiveSpeedLimit(settings.get()),
       registerInExo: registerModelWithExo
     })
     registerIpc(manager, settings)
     await manager.init()
+
+    // Packaged builds take their icon from the bundle; without this, dev runs
+    // would show Electron's in the Dock.
+    if (process.platform === 'darwin' && !app.isPackaged) {
+      app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
+    }
 
     createWindow()
 

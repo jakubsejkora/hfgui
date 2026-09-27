@@ -49,6 +49,10 @@ try {
   // Open a known small model and start the smallest quant download.
   await win.evaluate((id) => window.__hfguiTest.openModel(id), MODEL)
   await win.waitForSelector('[data-testid^="download-"]', { timeout: 30000 })
+  // Never let a test write into a real app library. The sheet auto-selects LM
+  // Studio or exo when they're installed, so pick the temp folder explicitly —
+  // and stop at once if a job lands anywhere else anyway.
+  await win.click('[data-testid="destination-custom"]')
   const firstButton = win.locator('[data-testid^="download-"]').first()
   const quantLabel = await firstButton.getAttribute('data-testid')
   await firstButton.click()
@@ -56,6 +60,12 @@ try {
 
   const jobs = async () => await win.evaluate(() => window.__hfguiTest.getJobs())
   const theJob = async () => Object.values(await jobs())[0]
+  await win.waitForFunction(() => Object.keys(window.__hfguiTest.getJobs()).length > 0)
+  const started = await theJob()
+  if (!started.jobDir.startsWith(downloadDir)) {
+    await win.evaluate((id) => window.hfgui.cancelDownload(id), started.jobId)
+    throw new Error(`download went to ${started.jobDir}, outside the test folder — cancelled`)
+  }
 
   // Wait until it is actually downloading with some bytes on disk.
   await win.waitForFunction(

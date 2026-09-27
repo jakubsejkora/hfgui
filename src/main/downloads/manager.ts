@@ -7,6 +7,7 @@ import type {
   StartDownloadResult
 } from '@shared/types'
 import { checkDiskSpace, volumeIdFor } from '../system'
+import { BandwidthLimiter } from './bandwidth'
 import { DownloadJob, type JobDeps } from './job'
 import { Persistence } from './persistence'
 
@@ -15,6 +16,8 @@ export interface ManagerDeps {
   getToken(): string | null
   getMaxConcurrent(): number
   getAutoResume(): boolean
+  /** Cap on combined download speed in bytes/sec, or null for none. */
+  getSpeedLimit(): number | null
   registerInExo(repoId: string): Promise<ExoRegistration>
   /** Injectable for tests; default to the real fs-backed implementations. */
   checkDiskSpace?: typeof checkDiskSpace
@@ -30,19 +33,33 @@ export class DownloadManager {
   private persistence: Persistence
   private deps: ManagerDeps
   private exoRegistrationsInFlight = new Set<string>()
+  /** One budget for every job: the cap is on the connection, not per download. */
+  private limiter = new BandwidthLimiter()
 
   constructor(deps: ManagerDeps) {
     this.deps = deps
     this.persistence = new Persistence(join(deps.userDataDir, 'downloads.json'))
     this.persistence.bind(() => this.list())
+    this.limiter.setLimit(deps.getSpeedLimit())
   }
 
   private jobDeps(): JobDeps {
     return {
       getToken: () => this.deps.getToken(),
       emit: (ev) => this.emit(ev),
-      persist: () => this.persistence.schedule()
+      persist: () => this.persistence.schedule(),
+      throttle: (bytes, signal) => this.limiter.acquire(bytes, signal)
     }
+  }
+
+  /**
+   * Re-read the settings that apply to work already in progress: the speed cap
+   * takes effect on running downloads immediately, and a raised concurrency
+   * limit starts queued jobs now rather than when the next one finishes.
+   */
+  settingsChanged(): void {
+    this.limiter.setLimit(this.deps.getSpeedLimit())
+    this.pump()
   }
 
   async init(): Promise<void> {

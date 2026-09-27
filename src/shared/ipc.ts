@@ -1,3 +1,4 @@
+import type { ModelRef } from './modelRef'
 import type {
   DestinationInfo,
   DiskSpace,
@@ -29,7 +30,8 @@ export const IPC = {
   checkDiskSpace: 'hfgui:check-disk-space',
   getSystemInfo: 'hfgui:get-system-info',
   openExternal: 'hfgui:open-external',
-  openInLmStudio: 'hfgui:open-in-lmstudio'
+  openInLmStudio: 'hfgui:open-in-lmstudio',
+  readClipboardModelRef: 'hfgui:read-clipboard-model-ref'
 } as const
 
 export interface HfguiApi {
@@ -57,4 +59,9 @@ export interface HfguiApi {
   openExternal(url: string): Promise<void>
   /** Launch LM Studio focused on the given repo via its open_from_hf deep link. */
   openInLmStudio(repoId: string): Promise<void>
+  /**
+   * The clipboard, parsed in main — the renderer only ever sees a model
+   * reference or null, never whatever else the user last copied.
+   */
+  readClipboardModelRef(): Promise<ModelRef | null>
 }

@@ -22,6 +22,7 @@ function makeManager(overrides: Partial<ManagerDeps> = {}): DownloadManager {
     // 0 slots: queued jobs stay queued, so tests never hit the network.
     getMaxConcurrent: () => 0,
     getAutoResume: () => false,
+    getSpeedLimit: () => null,
     registerInExo: async () => ({ status: 'registered', message: null }),
     checkDiskSpace: async () => ({ freeBytes: 100, totalBytes: 1000 }),
     volumeIdFor: async () => 1,

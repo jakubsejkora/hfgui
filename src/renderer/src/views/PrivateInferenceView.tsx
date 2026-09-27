@@ -33,7 +33,7 @@ function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
       {query.data ? (
         <ModelCard model={query.data} onClick={() => openModel(suggestion.repoId)} />
       ) : query.isError ? (
-        <div className="border-border bg-surface text-faint flex h-[104px] flex-col items-center justify-center gap-2 rounded-xl border p-4 text-xs">
+        <div className="sleeve text-faint flex h-[88px] flex-col items-center justify-center gap-2 p-4 text-xs">
           <span>Couldn’t load {suggestion.repoId}</span>
           <Button variant="ghost" size="sm" onClick={() => void query.refetch()}>
             <RotateCcw className="h-3 w-3" />
@@ -41,9 +41,9 @@ function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
           </Button>
         </div>
       ) : (
-        <Skeleton className="h-[104px] rounded-xl" />
+        <Skeleton className="rounded-sleeve h-[88px]" />
       )}
-      <p className="text-faint px-1 text-[11px] leading-relaxed">{suggestion.reason}</p>
+      <p className="text-faint px-2 text-[11px] leading-relaxed">{suggestion.reason}</p>
     </div>
   )
 }
@@ -51,19 +51,19 @@ function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
 export function PrivateInferenceView() {
   return (
     <div className="flex h-full flex-col">
-      <div className="border-border border-b px-6 pt-6 pb-4">
+      <div className="px-6 pt-1 pb-4">
         <h1 className="text-[15px] font-semibold">Private inference</h1>
         <p className="text-faint mt-0.5 text-xs">
           Model picks for offtype, offrecord and offtable — local-first apps that run everything
           on-device with models you download here.
         </p>
       </div>
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className="flex-1 overflow-y-auto px-6 pb-5">
         <div className="flex flex-col gap-10">
           {TOOLS.map((tool) => (
             <section key={tool.name} className="flex flex-col gap-3">
               <div className="flex items-start gap-3">
-                <div className="bg-surface-2 border-border text-accent flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border">
+                <div className="slot text-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px]">
                   {TOOL_ICON[tool.icon]}
                 </div>
                 <div className="min-w-0">
@@ -86,7 +86,7 @@ export function PrivateInferenceView() {
                   <p className="text-faint text-[11px] leading-relaxed">{tool.modelNeeds}</p>
                 </div>
               </div>
-              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
+              <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
                 {tool.suggestions.map((s) => (
                   <SuggestionCard key={s.repoId} suggestion={s} />
                 ))}

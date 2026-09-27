@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'fs'
 import { mkdir, rename, unlink, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
+import { DEFAULT_SPEED_LIMIT, clampSpeedLimit } from '@shared/speedLimit'
 import type { Settings, TokenStatus } from '@shared/types'
 
 const DEFAULTS: Settings = {
@@ -11,7 +12,25 @@ const DEFAULTS: Settings = {
   customDir: null,
   maxConcurrentJobs: 2,
   autoResume: false,
-  theme: 'system'
+  theme: 'system',
+  clipboardWatch: true,
+  speedLimitEnabled: false,
+  speedLimitBytesPerSec: DEFAULT_SPEED_LIMIT
+}
+
+/**
+ * The one validation pass, applied both to what's read from disk and to every
+ * patch from the renderer — a hand-edited settings.json gets the same checks.
+ */
+function normalize(s: Settings): Settings {
+  return {
+    ...s,
+    maxConcurrentJobs: Math.min(5, Math.max(1, s.maxConcurrentJobs | 0)),
+    theme: ['system', 'light', 'dark'].includes(s.theme) ? s.theme : 'system',
+    clipboardWatch: s.clipboardWatch !== false,
+    speedLimitEnabled: s.speedLimitEnabled === true,
+    speedLimitBytesPerSec: clampSpeedLimit(s.speedLimitBytesPerSec)
+  }
 }
 
 async function writeAtomic(file: string, data: string): Promise<void> {
@@ -35,9 +54,7 @@ export class SettingsStore {
   private loadSync(): Settings {
     try {
       const raw = JSON.parse(readFileSync(this.file, 'utf8'))
-      const loaded: Settings = { ...DEFAULTS, ...raw }
-      if (!['system', 'light', 'dark'].includes(loaded.theme)) loaded.theme = 'system'
-      return loaded
+      return normalize({ ...DEFAULTS, ...raw })
     } catch {
       return { ...DEFAULTS }
     }
@@ -48,9 +65,7 @@ export class SettingsStore {
   }
 
   async set(patch: Partial<Settings>): Promise<Settings> {
-    this.cache = { ...this.cache, ...patch }
-    this.cache.maxConcurrentJobs = Math.min(5, Math.max(1, this.cache.maxConcurrentJobs | 0))
-    if (!['system', 'light', 'dark'].includes(this.cache.theme)) this.cache.theme = 'system'
+    this.cache = normalize({ ...this.cache, ...patch })
     await writeAtomic(this.file, JSON.stringify(this.cache, null, 2))
     return this.get()
   }

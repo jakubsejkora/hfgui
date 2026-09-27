@@ -5,8 +5,8 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={cn(
-        'no-drag bg-surface-2 border-border text-text placeholder:text-faint h-9 w-full rounded-lg border px-3 text-sm',
-        'focus:border-border-strong focus:ring-accent/40 transition-colors focus:ring-2 focus:outline-none',
+        'no-drag slot text-text placeholder:text-faint h-9 w-full px-3.5 text-sm',
+        'focus:ring-accent/40 transition-shadow focus:ring-2 focus:outline-none',
         className
       )}
       {...props}

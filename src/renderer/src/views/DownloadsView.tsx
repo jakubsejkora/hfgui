@@ -40,13 +40,17 @@ export function DownloadsView() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-border border-b px-6 pt-6 pb-4">
+      <div className="px-6 pt-1 pb-4">
         <h1 className="text-[15px] font-semibold">Downloads</h1>
       </div>
-      <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-5">
+      <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 pb-5">
         {all.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3">
-            <ArrowDownToLine className="text-faint h-8 w-8" />
+          <div className="flex h-full flex-col items-center justify-center gap-4">
+            <div className="sleeve h-[104px] w-[180px] p-2">
+              <div className="border-border-strong bezel grain flex h-full w-full items-center justify-center border border-dashed">
+                <ArrowDownToLine className="text-faint h-6 w-6" />
+              </div>
+            </div>
             <p className="text-muted text-sm">No downloads yet.</p>
             <Button size="sm" onClick={() => setView('browse')}>
               Browse models

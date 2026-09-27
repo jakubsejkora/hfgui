@@ -5,8 +5,9 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { BandwidthLimiter } from './bandwidth'
 import { downloadFile } from './fileDownloader'
-import { DownloadError } from './resolve'
+import { DownloadError, isAbortError } from './resolve'
 
 const CONTENT = Buffer.from('hfgui integrity test payload | '.repeat(512))
 const SHA256 = createHash('sha256').update(CONTENT).digest('hex')
@@ -105,5 +106,44 @@ describe('downloadFile', () => {
     expect(err.code).toBe('checksum-mismatch')
     // partial removed so the retry restarts clean
     await expect(stat(`${dest}.partial`)).rejects.toThrow()
+  })
+})
+
+describe('downloadFile under a speed cap', () => {
+  function capped(bytesPerSec: number, destPath: string, signal: AbortSignal): Promise<void> {
+    const limiter = new BandwidthLimiter({ burstMs: 0 })
+    limiter.setLimit(bytesPerSec)
+    return downloadFile({
+      url,
+      destPath,
+      expectedSize: CONTENT.length,
+      sha256: SHA256,
+      token: null,
+      signal,
+      onProgress: () => {},
+      throttle: (bytes, s) => limiter.acquire(bytes, s)
+    })
+  }
+
+  it('takes as long as the cap dictates and still verifies the hash', async () => {
+    const dest = join(dir, 'model.gguf')
+    const started = Date.now()
+    // ~15.5 KB at 8 KiB/s ≈ 1.9 s.
+    await capped(8 * 1024, dest, new AbortController().signal)
+    expect(Date.now() - started).toBeGreaterThan(1500)
+    expect(await readFile(dest)).toEqual(CONTENT)
+  })
+
+  it('pauses promptly while a chunk is being held back', async () => {
+    const dest = join(dir, 'model.gguf')
+    const controller = new AbortController()
+    // At 1 KiB/s the whole file would take ~15 s.
+    const run = capped(1024, dest, controller.signal)
+    setTimeout(() => controller.abort(), 150)
+    const started = Date.now()
+    const err = await run.catch((e) => e)
+    expect(isAbortError(err)).toBe(true)
+    expect(Date.now() - started).toBeLessThan(1000)
+    await expect(stat(dest)).rejects.toThrow()
   })
 })

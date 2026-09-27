@@ -8,6 +8,8 @@ files:
   - '!node_modules/**'
 npmRebuild: false
 mac:
+  # Rendered from build/icon.svg by `npm run icon`.
+  icon: build/icon.icns
   category: public.app-category.developer-tools
   hardenedRuntime: true
   gatekeeperAssess: false

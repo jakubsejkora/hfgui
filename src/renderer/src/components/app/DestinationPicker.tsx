@@ -1,5 +1,6 @@
 import { ExternalLink, FolderOpen, HardDrive } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { destinationRejection } from '@shared/destinationRules'
 import { formatBytes } from '@shared/format'
 import type { DestinationInfo, DownloadDestination, ModelFormat } from '@shared/types'
 import { useDestinations } from '@/lib/queries'
@@ -26,8 +27,9 @@ function optionState(
   info: DestinationInfo,
   format: ModelFormat
 ): { disabled: boolean; hint: string; installUrl?: string } {
+  // exo is the only hard rejection; a missing app is an invitation to install it.
   if (info.kind === 'exo' && format !== 'mlx') {
-    return { disabled: true, hint: 'exo runs MLX models only' }
+    return { disabled: true, hint: destinationRejection('exo', format, info)! }
   }
   if (info.kind === 'custom') {
     return { disabled: false, hint: info.path ? shortPath(info.path) : 'Choose a folder…' }
@@ -90,12 +92,13 @@ export function DestinationPicker({ format, value, onChange }: DestinationPicker
               key={info.kind}
               onClick={onClick}
               disabled={disabled}
+              data-testid={`destination-${info.kind}`}
               title={disabled ? hint : undefined}
               className={cn(
-                'flex cursor-pointer flex-col gap-0.5 rounded-xl border p-3 text-left transition-colors',
+                'rounded-bezel flex cursor-pointer flex-col gap-0.5 p-3 text-left transition-all',
                 selected
-                  ? 'border-accent/60 bg-accent/10'
-                  : 'border-border bg-surface-2 hover:border-border-strong',
+                  ? 'bg-accent/10 ring-accent/60 shadow-accent/10 shadow-lg ring-1'
+                  : 'slot hover:bg-surface-2',
                 disabled && 'cursor-not-allowed opacity-40',
                 installUrl && 'opacity-70 hover:opacity-100'
               )}
@@ -116,12 +119,15 @@ export function DestinationPicker({ format, value, onChange }: DestinationPicker
             {value.baseDir}
           </span>
           {value.kind === 'custom' && (
-            <button onClick={() => void pickCustom()} className="text-muted hover:text-text shrink-0 cursor-pointer underline">
+            <button
+              onClick={() => void pickCustom()}
+              className="text-muted hover:text-text shrink-0 cursor-pointer underline"
+            >
               Change
             </button>
           )}
           {disk && (
-            <span className="shrink-0">
+            <span className="tnum shrink-0">
               <HardDrive className="mr-1 inline h-3 w-3 align-[-2px]" />
               {formatBytes(disk.freeBytes)} free
             </span>

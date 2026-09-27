@@ -17,7 +17,7 @@ export function Tooltip({ content, children, side = 'top' }: TooltipProps) {
         <TooltipPrimitive.Content
           side={side}
           sideOffset={6}
-          className="bg-surface-3 border-border text-text animate-fade-in z-[60] max-w-72 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl shadow-black/40"
+          className="glass-strong text-text animate-fade-in z-[80] max-w-72 rounded-xl px-3 py-1.5 text-xs shadow-[var(--shadow-float)]"
         >
           {content}
         </TooltipPrimitive.Content>

@@ -1,7 +1,7 @@
 import type { HTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
-type Variant = 'default' | 'accent' | 'mlx' | 'success' | 'warning' | 'danger' | 'outline'
+type Variant = 'default' | 'accent' | 'mlx' | 'success' | 'warning' | 'danger' | 'outline' | 'glass'
 
 const variants: Record<Variant, string> = {
   default: 'bg-surface-3 text-muted',
@@ -10,7 +10,9 @@ const variants: Record<Variant, string> = {
   success: 'bg-success/15 text-success',
   warning: 'bg-warning/15 text-warning',
   danger: 'bg-danger/15 text-danger',
-  outline: 'border border-border text-faint'
+  outline: 'border border-border text-faint',
+  /** For badges sitting on artwork, which looks the same in both themes. */
+  glass: 'glass-on-art'
 }
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
@@ -21,7 +23,7 @@ export function Badge({ variant = 'default', className, ...props }: BadgeProps) 
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap',
+        'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap',
         variants[variant],
         className
       )}

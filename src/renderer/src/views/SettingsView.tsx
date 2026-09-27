@@ -1,4 +1,4 @@
-import { ExternalLink, FolderSearch, KeyRound, RotateCcw, SunMoon } from 'lucide-react'
+import { ClipboardCheck, ExternalLink, FolderSearch, KeyRound, RotateCcw, SunMoon } from 'lucide-react'
 import { useState } from 'react'
 import type { DestinationKind, Settings, Theme } from '@shared/types'
 import { useDestinations, useInvalidate, useSettings, useTokenStatus } from '@/lib/queries'
@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip } from '@/components/ui/tooltip'
+import { SpeedLimitControl } from '@/components/app/SpeedLimitControl'
 import { TokenDialog } from '@/components/app/TokenDialog'
 
 const THEME_OPTIONS = [
@@ -54,7 +55,7 @@ function DirectoryRow({ kind, label }: { kind: DestinationKind; label: string })
   }
 
   return (
-    <div className="border-border bg-surface flex items-center gap-3 rounded-xl border p-4">
+    <div className="sleeve flex items-center gap-3 p-4">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-semibold">{label}</span>
@@ -64,7 +65,10 @@ function DirectoryRow({ kind, label }: { kind: DestinationKind; label: string })
             <Badge variant="outline">not found</Badge>
           )}
         </div>
-        <div className="text-faint selectable truncate font-mono text-[11px]" title={info?.path ?? undefined}>
+        <div
+          className="slot text-faint selectable mt-1 inline-block max-w-full truncate rounded-full px-3 py-1 font-mono text-[11px]"
+          title={info?.path ?? undefined}
+        >
           {info?.path ?? 'No folder set'}
         </div>
         <div className="text-faint mt-1 text-[11px]">{DIR_BLURB[kind]}</div>
@@ -109,16 +113,16 @@ export function SettingsView() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-border border-b px-6 pt-6 pb-4">
+      <div className="px-6 pt-1 pb-4">
         <h1 className="text-[15px] font-semibold">Settings</h1>
       </div>
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className="flex-1 overflow-y-auto px-6 pb-5">
         <div className="flex max-w-2xl flex-col gap-8">
           <section className="flex flex-col gap-2.5">
             <h2 className="text-faint text-[11px] font-semibold tracking-wider uppercase">
               Appearance
             </h2>
-            <div className="border-border bg-surface flex items-center gap-3 rounded-xl border p-4">
+            <div className="sleeve flex items-center gap-3 p-4">
               <SunMoon className="text-accent h-4 w-4 shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="text-[13px] font-semibold">Theme</div>
@@ -149,7 +153,7 @@ export function SettingsView() {
             <h2 className="text-faint text-[11px] font-semibold tracking-wider uppercase">
               Hugging Face
             </h2>
-            <div className="border-border bg-surface flex items-center gap-3 rounded-xl border p-4">
+            <div className="sleeve flex items-center gap-3 p-4">
               <KeyRound className="text-accent h-4 w-4 shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="text-[13px] font-semibold">Access token</div>
@@ -169,7 +173,7 @@ export function SettingsView() {
             <h2 className="text-faint text-[11px] font-semibold tracking-wider uppercase">
               Downloads
             </h2>
-            <div className="border-border bg-surface flex flex-col gap-4 rounded-xl border p-4">
+            <div className="sleeve flex flex-col gap-4 p-4">
               <div className="flex items-center gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px] font-semibold">Parallel downloads</div>
@@ -188,6 +192,9 @@ export function SettingsView() {
                   {settings?.maxConcurrentJobs ?? 2}
                 </span>
               </div>
+              <div className="border-border border-t pt-4">
+                <SpeedLimitControl />
+              </div>
               <div className="border-border flex items-center gap-4 border-t pt-4">
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px] font-semibold">Resume on launch</div>
@@ -199,6 +206,22 @@ export function SettingsView() {
                   checked={settings?.autoResume ?? false}
                   onCheckedChange={(v) => void patch({ autoResume: v })}
                   ariaLabel="Resume on launch"
+                />
+              </div>
+              <div className="border-border flex items-center gap-4 border-t pt-4">
+                <ClipboardCheck className="text-accent h-4 w-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold">Offer copied links</div>
+                  <div className="text-faint text-[11px]">
+                    When hfgui regains focus with a Hugging Face link on the clipboard, offer to
+                    open it. The clipboard is read in the background process and only ever
+                    produces a model name — nothing else reaches the app.
+                  </div>
+                </div>
+                <Switch
+                  checked={settings?.clipboardWatch ?? true}
+                  onCheckedChange={(v) => void patch({ clipboardWatch: v })}
+                  ariaLabel="Offer copied links"
                 />
               </div>
             </div>

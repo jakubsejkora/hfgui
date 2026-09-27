@@ -1,5 +1,6 @@
-import { BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { IPC } from '@shared/ipc'
+import { parseModelRef } from '@shared/modelRef'
 import type { DownloadRequest, Settings } from '@shared/types'
 import { adapters, getDestinations } from './destinations'
 import type { DownloadManager } from './downloads/manager'
@@ -47,6 +48,7 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
   ipcMain.handle(IPC.setSettings, async (_e, patch: Partial<Settings>) => {
     const next = await settings.set(patch)
     if (patch.theme !== undefined) nativeTheme.themeSource = next.theme
+    manager.settingsChanged()
     return next
   })
   ipcMain.handle(IPC.setHfToken, (_e, token: string | null) => settings.setToken(token))
@@ -76,6 +78,13 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
     if (/^https?:\/\//i.test(url)) return shell.openExternal(url)
     return Promise.resolve()
   })
+  // Parsed here rather than in the renderer so the clipboard's actual contents
+  // — which may be a password or anything else — never cross the bridge.
+  ipcMain.handle(IPC.readClipboardModelRef, () => {
+    if (!settings.get().clipboardWatch) return null
+    return parseModelRef(clipboard.readText().slice(0, 2048))
+  })
+
   // Same deep link HF's "Use this model" button emits; launches or focuses LM Studio.
   ipcMain.handle(IPC.openInLmStudio, (_e, repoId: string) => {
     if (!isValidRepoId(repoId)) return Promise.resolve()

@@ -15,6 +15,8 @@ export interface JobDeps {
   getToken(): string | null
   emit(ev: DownloadEvent): void
   persist(): void
+  /** The download-wide speed cap, shared with every other job. */
+  throttle(bytes: number, signal: AbortSignal): Promise<void> | null
 }
 
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000]
@@ -205,6 +207,7 @@ export class DownloadJob {
               sha256: file.sha256 ?? null,
               token,
               signal,
+              throttle: this.deps.throttle,
               onProgress: (bytesDone) => {
                 file.bytesDone = bytesDone
                 this.emitProgress()
