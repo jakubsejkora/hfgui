@@ -106,6 +106,12 @@ export interface Settings {
   maxConcurrentJobs: number
   autoResume: boolean
   theme: Theme
+  /** Offer to open a Hugging Face link when one is on the clipboard. */
+  clipboardWatch: boolean
+  /** Cap the combined speed of all downloads at speedLimitBytesPerSec. */
+  speedLimitEnabled: boolean
+  /** Remembered separately from the switch, so turning the cap off and on keeps it. */
+  speedLimitBytesPerSec: number
 }
 
 export interface DestinationInfo {

@@ -17,6 +17,11 @@ export interface FileDownloadOptions {
   signal: AbortSignal
   /** Absolute bytes written for this file (including pre-existing partial bytes). */
   onProgress: (bytesDone: number) => void
+  /**
+   * Called with each network chunk before it is passed on; returns null to let it
+   * through now, or a promise that holds it back (see BandwidthLimiter).
+   */
+  throttle?: (bytes: number, signal: AbortSignal) => Promise<void> | null
 }
 
 async function sizeOf(path: string): Promise<number | null> {
@@ -75,7 +80,7 @@ function classify(e: unknown): DownloadError {
  * Throws DownloadError; AbortError passes through untouched (pause/cancel).
  */
 export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
-  const { url, destPath, expectedSize, sha256, token, signal, onProgress } = opts
+  const { url, destPath, expectedSize, sha256, token, signal, onProgress, throttle } = opts
   const partialPath = `${destPath}.partial`
 
   // Already fully downloaded in a previous run? Size-only on purpose: the file
@@ -163,12 +168,21 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
 
   let bytesDone = startAt
   onProgress(bytesDone)
+  // Holding a chunk here backs the whole pipeline up to the socket, which is
+  // what makes a speed cap slow the connection rather than just the disk.
   const counter = new Transform({
     transform(chunk: Buffer, _enc, cb) {
-      hash?.update(chunk)
-      bytesDone += chunk.length
-      onProgress(bytesDone)
-      cb(null, chunk)
+      const pass = (): void => {
+        hash?.update(chunk)
+        bytesDone += chunk.length
+        onProgress(bytesDone)
+        cb(null, chunk)
+      }
+      const wait = throttle?.(chunk.length, signal)
+      // .catch rather than a second .then argument: a throw inside pass() must
+      // fail the stream too, not become an unhandled rejection that stalls it.
+      if (wait) wait.then(pass).catch(cb)
+      else pass()
     }
   })
 

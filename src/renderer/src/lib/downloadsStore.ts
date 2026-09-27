@@ -65,6 +65,18 @@ export function selectActiveCount(jobs: Record<string, DownloadJobSnapshot>): nu
   return Object.values(jobs).filter((j) => ACTIVE_JOB_STATES.has(j.state)).length
 }
 
+/** Combined live speed of every running download, bytes/sec. */
+export function totalSpeed(
+  jobs: Record<string, DownloadJobSnapshot>,
+  progress: Record<string, ProgressInfo>
+): number {
+  let sum = 0
+  for (const job of Object.values(jobs)) {
+    if (ACTIVE_JOB_STATES.has(job.state)) sum += progress[job.jobId]?.bytesPerSec ?? 0
+  }
+  return sum
+}
+
 export function sortedJobs(jobs: Record<string, DownloadJobSnapshot>): DownloadJobSnapshot[] {
   return Object.values(jobs).sort((a, b) => b.createdAt - a.createdAt)
 }

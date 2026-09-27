@@ -23,8 +23,8 @@ export function Select({ value, onValueChange, options, icon, className, ariaLab
       <SelectPrimitive.Trigger
         aria-label={ariaLabel}
         className={cn(
-          'no-drag bg-surface-2 border-border text-text hover:bg-surface-3 hover:border-border-strong',
-          'inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition-colors',
+          'no-drag glass text-text hover:bg-surface-3',
+          'inline-flex h-9 cursor-pointer items-center gap-2 rounded-full px-3.5 text-sm transition-colors',
           'focus:ring-accent/40 focus:ring-2 focus:outline-none',
           className
         )}
@@ -37,14 +37,14 @@ export function Select({ value, onValueChange, options, icon, className, ariaLab
         <SelectPrimitive.Content
           position="popper"
           sideOffset={6}
-          className="bg-surface-2 border-border animate-pop-in z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl border shadow-2xl shadow-black/50"
+          className="glass-strong rounded-bezel animate-pop-in z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden shadow-[var(--shadow-float)]"
         >
           <SelectPrimitive.Viewport className="p-1">
             {options.map((opt) => (
               <SelectPrimitive.Item
                 key={opt.value}
                 value={opt.value}
-                className="text-muted data-[highlighted]:bg-surface-3 data-[highlighted]:text-text flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none select-none data-[state=checked]:text-text"
+                className="text-muted data-[highlighted]:bg-surface-3 data-[highlighted]:text-text data-[state=checked]:text-text flex cursor-pointer items-center gap-2 rounded-full px-3 py-1.5 text-sm outline-none select-none"
               >
                 <SelectPrimitive.ItemText>{opt.label}</SelectPrimitive.ItemText>
                 <SelectPrimitive.ItemIndicator className="ml-auto">

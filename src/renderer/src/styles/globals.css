@@ -1,36 +1,94 @@
 @import 'tailwindcss';
 
+/*
+ * Inter, latin subset only, resolved out of node_modules by Vite and inlined as
+ * a data: URI at build time (see assetsInlineLimit in electron.vite.config.ts).
+ * Production loads the renderer from file://, where CSP `font-src 'self'` does
+ * not reliably match — a data: URI is deterministic.
+ */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: block;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2')
+    format('woff2-variations');
+}
+
 @theme {
-  --color-bg: #0b0b0e;
-  --color-surface: #121217;
-  --color-surface-2: #1a1a21;
-  --color-surface-3: #23232c;
-  --color-border: #26262f;
-  --color-border-strong: #373743;
-  --color-text: #ececf1;
-  --color-muted: #9b9ba7;
-  --color-faint: #67676f;
+  --color-bg: #08080a;
+  --color-surface: #141417;
+  --color-surface-2: #1b1b20;
+  --color-surface-3: #26262d;
+  --color-inset: #0c0c0f;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.17);
+  --color-text: #f2f2f5;
+  --color-muted: rgba(255, 255, 255, 0.56);
+  --color-faint: rgba(255, 255, 255, 0.34);
   --color-accent: #ffb340;
-  --color-accent-hover: #ffc266;
-  --color-accent-fg: #000000;
-  --color-danger: #f4635e;
-  --color-success: #4ade80;
+  --color-accent-hover: #ffc470;
+  --color-accent-fg: #1a1205;
+  --color-danger: #ff6b66;
+  --color-success: #3ddc97;
   --color-warning: #fbbf24;
   --color-mlx: #7dd3fc;
 
+  --radius-sleeve: 22px;
+  --radius-bezel: 16px;
+  --radius-slot: 999px;
+
   --font-sans:
-    ui-sans-serif, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+    'Inter Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+    'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
 
   --animate-fade-in: fade-in 0.18s ease;
-  --animate-slide-in: slide-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-in: slide-in 0.34s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-pop-in: pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-dock-in: dock-in 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-glow-drift: glow-drift 28s ease-in-out infinite alternate;
 }
 
-/* ModelCard avatar hue-derived colors: saturation/lightness per theme. */
+/*
+ * Non-@theme design tokens: depth, texture and the generated model artwork.
+ * Kept as plain custom properties so `html.light` can swap them wholesale —
+ * every rule below reads them through var().
+ */
 :root {
+  /* ModelCard avatar hue-derived colors: saturation/lightness per theme. */
   --avatar-bg-sl: 45% 22%;
   --avatar-fg-sl: 85% 72%;
+
+  /* modelArtwork() in src/shared/artwork.ts reads these. */
+  --art-sat: 82%;
+  --art-light: 58%;
+  --art-base-sat: 58%;
+  --art-base-light: 18%;
+
+  --edge-highlight: rgba(255, 255, 255, 0.09);
+  --bezel-inner: rgba(0, 0, 0, 0.5);
+
+  --shadow-sleeve:
+    0 16px 36px -14px rgba(0, 0, 0, 0.72), 0 2px 6px rgba(0, 0, 0, 0.36);
+  --shadow-lift:
+    0 28px 60px -20px rgba(0, 0, 0, 0.82), 0 6px 14px rgba(0, 0, 0, 0.42);
+  --shadow-slot:
+    inset 0 2px 8px rgba(0, 0, 0, 0.62), inset 0 1px 1px rgba(0, 0, 0, 0.85);
+  --shadow-float: 0 24px 60px -18px rgba(0, 0, 0, 0.8);
+
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-strong: rgba(255, 255, 255, 0.11);
+
+  --glow-warm: rgba(255, 179, 64, 0.07);
+  --glow-cool: rgba(125, 211, 252, 0.05);
+
+  --grain-opacity: 0.22;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  --scrim: linear-gradient(to top, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.12) 46%, transparent 100%);
 }
 
 /*
@@ -39,15 +97,16 @@
  * main process drives via nativeTheme.themeSource.
  */
 html.light {
-  --color-bg: #f4f4f6;
+  --color-bg: #f5f5f7;
   --color-surface: #ffffff;
-  --color-surface-2: #efeff2;
-  --color-surface-3: #e4e4e9;
-  --color-border: #e3e3e8;
-  --color-border-strong: #c7c7d1;
-  --color-text: #1b1b21;
-  --color-muted: #5e5e6a;
-  --color-faint: #8a8a94;
+  --color-surface-2: #f1f1f4;
+  --color-surface-3: #e5e5ea;
+  --color-inset: #ececf0;
+  --color-border: rgba(0, 0, 0, 0.09);
+  --color-border-strong: rgba(0, 0, 0, 0.18);
+  --color-text: #17171b;
+  --color-muted: rgba(0, 0, 0, 0.58);
+  --color-faint: rgba(0, 0, 0, 0.38);
   --color-accent: #b45309;
   --color-accent-hover: #92400e;
   --color-accent-fg: #ffffff;
@@ -58,6 +117,29 @@ html.light {
 
   --avatar-bg-sl: 70% 88%;
   --avatar-fg-sl: 70% 30%;
+
+  /* Artwork stays vivid in light mode — text on top is always white over a scrim. */
+  --art-sat: 78%;
+  --art-light: 60%;
+  --art-base-sat: 52%;
+  --art-base-light: 34%;
+
+  --edge-highlight: rgba(255, 255, 255, 0.9);
+  --bezel-inner: rgba(0, 0, 0, 0.12);
+
+  --shadow-sleeve: 0 10px 26px -12px rgba(16, 16, 24, 0.22), 0 1px 3px rgba(16, 16, 24, 0.1);
+  --shadow-lift: 0 22px 46px -18px rgba(16, 16, 24, 0.3), 0 4px 10px rgba(16, 16, 24, 0.12);
+  --shadow-slot: inset 0 2px 6px rgba(16, 16, 24, 0.12), inset 0 1px 1px rgba(16, 16, 24, 0.08);
+  --shadow-float: 0 22px 50px -16px rgba(16, 16, 24, 0.26);
+
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-strong: rgba(255, 255, 255, 0.92);
+
+  --glow-warm: rgba(180, 83, 9, 0.06);
+  --glow-cool: rgba(3, 105, 161, 0.05);
+
+  --grain-opacity: 0.1;
 }
 
 @keyframes fade-in {
@@ -71,7 +153,7 @@ html.light {
 
 @keyframes slide-in {
   from {
-    transform: translateX(32px);
+    transform: translateX(40px);
     opacity: 0;
   }
   to {
@@ -91,6 +173,48 @@ html.light {
   }
 }
 
+@keyframes dock-in {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes glow-drift {
+  from {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(1.18) translate3d(-3%, 2%, 0);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-success) 45%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
 html,
 body,
 #root {
@@ -101,6 +225,7 @@ body {
   @apply bg-bg text-text font-sans antialiased;
   overscroll-behavior: none;
   user-select: none;
+  letter-spacing: -0.01em;
 }
 
 input,
@@ -117,20 +242,173 @@ textarea,
   -webkit-app-region: no-drag;
 }
 
+/*
+ * Component classes live in the components layer so Tailwind utilities can
+ * override them. Unlayered, they would beat every utility regardless of
+ * specificity — `slot` would pin a checked switch's track to the inset colour,
+ * and `bezel` would override every rounded-* on an artwork tile.
+ */
+@layer components {
+  /* ---------------------------------------------------------------- surfaces */
+
+  /**
+   * The "sleeve": an outer shell with a hairline top highlight and a soft drop
+   * shadow. Pair with `.bezel` on the inner panel for the nested-radius look.
+   */
+  .sleeve {
+    background: linear-gradient(180deg, var(--color-surface-2) 0%, var(--color-surface) 100%);
+    border-radius: var(--radius-sleeve);
+    box-shadow: var(--shadow-sleeve), inset 0 1px 0 var(--edge-highlight);
+  }
+
+  .sleeve-interactive {
+    transition:
+      transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .sleeve-interactive:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lift), inset 0 1px 0 var(--edge-highlight);
+  }
+
+  .sleeve-interactive:active {
+    transform: translateY(0) scale(0.995);
+  }
+
+  /** The recessed inner panel that holds artwork. */
+  .bezel {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-bezel);
+    box-shadow:
+      inset 0 0 0 1px var(--bezel-inner),
+      inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+  /** The deeply inset "receiver slot" — dock, quant rows, progress tracks. */
+  .slot {
+    background: var(--color-inset);
+    border-radius: var(--radius-bezel);
+    box-shadow: var(--shadow-slot);
+  }
+
+  .glass {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(14px) saturate(150%);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+  }
+
+  /**
+   * Glass for elements sitting on top of artwork. Artwork is deliberately the one
+   * surface that does not change with the theme, so this must not either — a
+   * light-theme glass here would put white text on a near-white pill.
+   */
+  .glass-on-art {
+    background: rgb(0 0 0 / 0.3);
+    border: 1px solid rgb(255 255 255 / 0.24);
+    color: #fff;
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+  }
+
+  .glass-on-art-strong {
+    background: rgb(255 255 255 / 0.22);
+    border: 1px solid rgb(255 255 255 / 0.3);
+    color: #fff;
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+  }
+
+  .glass-strong {
+    background: var(--glass-strong);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+  }
+
+  /* ---------------------------------------------------------------- texture */
+
+  /**
+   * Film grain. One shared data: URI, decoded once and tiled, so adding it to a
+   * grid of cards costs a composite rather than a texture each.
+   */
+  .grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background-image: var(--grain);
+    background-size: 160px 160px;
+    opacity: var(--grain-opacity);
+    mix-blend-mode: overlay;
+  }
+
+  /** Darkens the bottom of artwork so white text stays legible in both themes. */
+  .scrim::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--scrim);
+  }
+
+  .vignette::after {
+    box-shadow: inset 0 0 40px 6px rgba(0, 0, 0, 0.28);
+  }
+
+  /** Ambient room light behind the whole app. */
+  .ambient {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(62% 46% at 50% -10%, var(--glow-warm), transparent 72%),
+      radial-gradient(44% 34% at 88% 108%, var(--glow-cool), transparent 72%);
+  }
+
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pulse-dot {
+    animation: pulse-ring 2.2s ease-out infinite;
+  }
+}
+
+/*
+ * One switch for everything above. The grid already avoids animation for
+ * performance; this covers the hero drift, the dock and the status pulse.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ------------------------------------------------------------- scrollbars */
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: var(--color-border-strong);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-border-strong);
+  background: var(--color-muted);
   border: 2px solid transparent;
   background-clip: padding-box;
 }

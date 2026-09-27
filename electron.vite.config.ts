@@ -23,6 +23,12 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
+    build: {
+      // The renderer is served from file:// in packaged builds, where CSP
+      // `font-src 'self'` does not reliably match. Inlining the one bundled
+      // woff2 (Inter latin, ~48 KB) as a data: URI sidesteps that entirely.
+      assetsInlineLimit: 96 * 1024
+    },
     plugins: [react(), tailwindcss()]
   }
 })

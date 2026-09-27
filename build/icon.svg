@@ -1,0 +1,130 @@
+<!--
+  hfgui app icon — the source for build/icon.icns and build/icon.png.
+  Re-render after editing with `npm run icon`.
+
+  Laid out on Apple's macOS icon grid: an 824 px rounded square with 100 px of
+  margin in a 1024 canvas, the margin holding the drop shadow. macOS 26 frames
+  icons that stray from that shape in a grey tile, so keep the body on the grid.
+
+  The motif is the app's own: a glass orb (a model) about to drop into the inset
+  "receiver slot" — the load-a-model gesture the redesign is built around — on
+  the ember gradient used for the brand throughout the UI.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <clipPath id="body">
+      <rect x="100" y="100" width="824" height="824" rx="185.4" />
+    </clipPath>
+
+    <!-- Two warm light sources over a burnt-orange base. -->
+    <radialGradient id="ember" cx="281" cy="825" r="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff5b2e" />
+      <stop offset="1" stop-color="#ff5b2e" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glow" cx="792" cy="215" r="574" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffc24a" />
+      <stop offset="1" stop-color="#ffc24a" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18" />
+      <stop offset="0.42" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="1" stop-color="#1a0600" stop-opacity="0.2" />
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55" />
+      <stop offset="0.3" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="1" stop-color="#1a0600" stop-opacity="0.28" />
+    </linearGradient>
+
+    <!-- The receiver slot: a groove cut into the surface, lit on its lower lip. -->
+    <linearGradient id="slot" x1="0" y1="652" x2="0" y2="752" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1a0600" stop-opacity="0.66" />
+      <stop offset="1" stop-color="#1a0600" stop-opacity="0.34" />
+    </linearGradient>
+    <linearGradient id="slot-lip" x1="0" y1="652" x2="0" y2="752" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1a0600" stop-opacity="0.35" />
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.42" />
+    </linearGradient>
+    <filter id="groove" x="-5%" y="-30%" width="110%" height="160%">
+      <feFlood flood-color="#000000" flood-opacity="0.6" />
+      <feComposite in2="SourceAlpha" operator="out" />
+      <feGaussianBlur stdDeviation="9" />
+      <feOffset dy="12" />
+      <feComposite in2="SourceAlpha" operator="in" />
+      <feMerge>
+        <feMergeNode in="SourceGraphic" />
+        <feMergeNode />
+      </feMerge>
+    </filter>
+
+    <!-- Glass: bright at the top, clearer at the edges, with a rim that catches light. -->
+    <radialGradient id="orb" cx="512" cy="330" r="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.5" />
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0.2" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.12" />
+    </radialGradient>
+    <linearGradient id="orb-edge" x1="0" y1="240" x2="0" y2="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.28" />
+    </linearGradient>
+    <radialGradient id="specular" cx="430" cy="318" r="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+    </radialGradient>
+
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" stitchTiles="stitch" />
+      <feColorMatrix type="saturate" values="0" />
+    </filter>
+    <filter id="lift" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000000" flood-opacity="0.3" />
+    </filter>
+    <filter id="float" x="-40%" y="-40%" width="180%" height="190%">
+      <feDropShadow dx="0" dy="26" stdDeviation="24" flood-color="#2a0e02" flood-opacity="0.38" />
+    </filter>
+    <filter id="glyph" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#3a1402" flood-opacity="0.3" />
+    </filter>
+  </defs>
+
+  <g filter="url(#lift)">
+    <g clip-path="url(#body)">
+      <rect x="100" y="100" width="824" height="824" fill="#9c3f08" />
+      <rect x="100" y="100" width="824" height="824" fill="url(#ember)" />
+      <rect x="100" y="100" width="824" height="824" fill="url(#glow)" />
+      <rect x="100" y="100" width="824" height="824" fill="url(#sheen)" />
+      <rect
+        x="100"
+        y="100"
+        width="824"
+        height="824"
+        filter="url(#grain)"
+        opacity="0.1"
+        style="mix-blend-mode: overlay"
+      />
+
+      <!-- the receiver slot -->
+      <rect x="222" y="652" width="580" height="100" rx="50" fill="url(#slot)" filter="url(#groove)" />
+      <rect x="222" y="652" width="580" height="100" rx="50" fill="none" stroke="url(#slot-lip)" stroke-width="5" />
+
+      <!-- the model, about to drop in -->
+      <g filter="url(#float)">
+        <circle cx="512" cy="430" r="182" fill="url(#orb)" stroke="url(#orb-edge)" stroke-width="8" />
+      </g>
+      <ellipse cx="440" cy="330" rx="96" ry="58" transform="rotate(-28 440 330)" fill="url(#specular)" />
+      <path
+        d="M512 352 V 498 M 446 438 L 512 504 L 578 438"
+        fill="none"
+        stroke="#ffffff"
+        stroke-opacity="0.95"
+        stroke-width="38"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        filter="url(#glyph)"
+      />
+
+      <rect x="100" y="100" width="824" height="824" rx="185.4" fill="none" stroke="url(#rim)" stroke-width="6" />
+    </g>
+  </g>
+</svg>

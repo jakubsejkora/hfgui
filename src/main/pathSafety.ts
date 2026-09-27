@@ -1,13 +1,6 @@
 import { join, resolve, sep } from 'path'
 
-/** Matches HF's namespace/name charset; excludes `.`/`..`, empty, and leading dots. */
-const SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
-
-/** HF repo ids are exactly "namespace/name". */
-export function isValidRepoId(repoId: string): boolean {
-  const segments = repoId.split('/')
-  return segments.length === 2 && segments.every((s) => SEGMENT_RE.test(s))
-}
+export { isValidRepoId } from '@shared/modelRef'
 
 /** Repo-relative file path from the Hub tree: forward slashes, no escapes. */
 export function isSafeRelPath(p: string): boolean {

@@ -21,15 +21,19 @@ function NavItem({
   return (
     <button
       onClick={() => setView(view)}
+      aria-current={active ? 'page' : undefined}
       className={cn(
-        'no-drag flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium transition-colors',
-        active ? 'bg-surface-3 text-text' : 'text-muted hover:bg-surface-2 hover:text-text'
+        'no-drag relative flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-full px-3.5 text-[13px] font-medium transition-colors',
+        active ? 'glass text-text' : 'text-muted hover:text-text hover:bg-surface-2'
       )}
     >
+      {active && (
+        <span className="bg-accent absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-full" />
+      )}
       {icon}
       {label}
       {badge != null && badge > 0 && (
-        <span className="bg-accent text-accent-fg ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold">
+        <span className="bg-accent text-accent-fg tnum ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold">
           {badge}
         </span>
       )}
@@ -40,18 +44,8 @@ function NavItem({
 export function Sidebar() {
   const activeCount = useDownloadsStore((s) => selectActiveCount(s.jobs))
   return (
-    <aside className="drag-region bg-surface border-border flex w-[216px] shrink-0 flex-col border-r">
-      {/* space for macOS traffic lights */}
-      <div className="flex items-center gap-2.5 px-4 pt-12 pb-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#ffb340] to-[#ff7a45] text-base shadow-lg shadow-black/30">
-          🤗
-        </div>
-        <div>
-          <div className="text-[13px] leading-tight font-semibold">hfgui</div>
-          <div className="text-faint text-[11px] leading-tight">Model downloader</div>
-        </div>
-      </div>
-      <nav className="no-drag flex flex-col gap-1 px-2.5">
+    <aside className="drag-region flex w-[212px] shrink-0 flex-col pt-2">
+      <nav className="no-drag flex flex-col gap-1 px-3">
         <NavItem view="browse" icon={<Compass className="h-4 w-4" />} label="Browse" />
         <NavItem
           view="downloads"

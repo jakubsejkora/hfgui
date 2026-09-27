@@ -8,6 +8,7 @@ import {
   X
 } from 'lucide-react'
 import { formatBytes, formatEta, formatSpeed } from '@shared/format'
+import { Artwork } from '@/components/ui/sleeve'
 import type { DownloadJobSnapshot, ExoRegistration } from '@shared/types'
 import type { ProgressInfo } from '@/lib/downloadsStore'
 import { Badge } from '@/components/ui/badge'
@@ -72,7 +73,9 @@ export function DownloadRow({
   const multiFile = job.files.length > 1
 
   return (
-    <div className="border-border bg-surface flex flex-col gap-2.5 rounded-xl border p-4">
+    <div className="sleeve flex items-start gap-3 p-2">
+      <Artwork repoId={job.repoId} size="row" className="mt-0.5" />
+      <div className="flex min-w-0 flex-1 flex-col gap-2.5 py-1 pr-1.5">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -180,7 +183,7 @@ export function DownloadRow({
         <Progress value={fraction} indeterminate={job.state === 'verifying'} />
       )}
 
-      <div className="text-muted flex items-center gap-2 text-[11px]">
+      <div className="text-muted tnum flex items-center gap-2 text-[11px]">
         <span
           className={
             job.state === 'error'
@@ -190,6 +193,9 @@ export function DownloadRow({
                 : 'font-medium'
           }
         >
+          {job.state === 'completed' && (
+            <span className="bg-success pulse-dot mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle" />
+          )}
           {STATE_LABEL[job.state] ?? job.state}
         </span>
         {active && progress && progress.bytesPerSec > 0 && (
@@ -252,6 +258,7 @@ export function DownloadRow({
           </div>
         )
       })()}
+      </div>
     </div>
   )
 }
