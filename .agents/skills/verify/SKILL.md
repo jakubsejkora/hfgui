@@ -82,6 +82,12 @@ Gotchas:
   sample is a cumulative total; drop it and average the rest.
 - Settings changed over IPC from a driver don't reach the UI's cache on their own — call
   `__hfguiTest.refreshSettings()` before asserting on anything the renderer computes from them.
+- Storage: `window.hfgui.getStorageReport()` (`held` per unfinished job, `leftovers`,
+  `missing`), `cleanLeftovers()`, `deleteDownload(jobId)` → confirm with `delete-confirm`.
+  Cleanup only deletes paths in `userData/incomplete-files.json` (the ledger of files hfgui
+  wrote for unfinished downloads) — test it on a seeded temp folder, never on the real
+  LM Studio / exo libraries. Removing an unfinished job with `removeDownload` keeps its data,
+  which is how a driver makes leftovers.
 - Speed limit selectors: `speed-chip` (header), `speed-limit-label`, and by role
   `getByRole('switch', { name: 'Limit download speed' })` /
   `getByRole('slider', { name: 'Download speed limit' })`.

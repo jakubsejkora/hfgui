@@ -34,6 +34,17 @@ folders where **LM Studio** and **exo** pick them up. No manual file moving.
   Downloads page keeps the history (In progress / Finished / Failed), Finder access, exo
   registration status, and plain-language help when something fails. Cancelling asks first,
   because it deletes what was downloaded so far.
+- **No dead disk space**: cancelling deletes everything an unfinished download wrote
+  (including the files a multi-file model had already finished); failed downloads can be
+  discarded; finished models can be deleted from disk while other quantizations in the same
+  folder stay; and data left by downloads removed from the list before they finished is
+  found and cleaned up in one click. hfgui keeps a ledger of the files it writes, so it only
+  ever deletes its own — never another app's, even though exo's downloader writes `.partial`
+  files into the same folder. Finished models whose files were moved or deleted are flagged
+  with **Download again**.
+- **Resume, carefully**: resuming checks free space and that an external drive is
+  connected, just like starting does; "Resume on launch" picks up downloads that quitting
+  interrupted, not ones you paused yourself.
 - **Notifications**: a macOS notification when a download finishes or fails in the
   background, a Dock badge with the number of active downloads, and the Dock icon's
   progress bar.
