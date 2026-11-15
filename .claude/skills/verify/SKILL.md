@@ -42,6 +42,15 @@ Its destination radios are `onboarding-{kind}`; LM Studio and exo appear only wh
 To see hfgui as someone without them, launch with `HOME` set to an empty temp dir — neither
 app is detected, and `~/Models` resolves inside that dir.
 
+**Model updates.** Automatic update checks don't run under a driver (`HFGUI_USER_DATA_DIR`
+set); call `window.hfgui.checkForUpdates()` (results by job id, also `getUpdates()`), or click
+**Check for updates** on Downloads. A row with a newer version gets `update-{jobId}`. An
+update builds in `<jobDir>@<new rev7>`, then takes over `jobDir` and moves the old version to
+`<jobDir>@<old rev7>`. To test without the real Hub, rewrite main's fetch to a local server
+(`app.evaluate` replacing `https://huggingface.co/`) that answers `/api/models/{repo}`
+(`{sha}`), `/api/models/{repo}/tree/{sha}` (files with `oid`, and `lfs.oid` for big ones)
+and `/{repo}/resolve/{sha}/{path}`; see `.context/verify-updates.mjs` if it's still around.
+
 Gotchas:
 
 - The app **lands on Overview**. The card grid lives on Browse: call

@@ -50,6 +50,13 @@ your choice, or straight into **LM Studio** and **exo** if you use them.
   ever deletes its own — never another app's, even though exo's downloader writes `.partial`
   files into the same folder. Finished models whose files were moved or deleted are flagged
   with **Download again**.
+- **Model updates**: hfgui checks finished downloads against the Hub (shortly after launch,
+  twice a day, or Downloads → Check for updates) and says what changed — "chat template and
+  tokenizer · 17 KB to download". **Update** downloads only the changed files; unchanged ones
+  are shared with the old version as APFS clones, so they take no extra space. The new
+  version takes over the model's folder, so anything pointing at it gets the update, and the
+  old one stays beside it as `<model>@<revision>`, listed as "Older version" until you delete
+  it.
 - **Resume, carefully**: resuming checks free space and that an external drive is
   connected, just like starting does; "Resume on launch" picks up downloads that quitting
   interrupted, not ones you paused yourself.
