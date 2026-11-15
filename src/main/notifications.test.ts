@@ -61,6 +61,14 @@ describe('createNotifier', () => {
     expect(h.notices[0].body).toBe('model · Q4_K_M — Not enough disk space.')
   })
 
+  it('does not throw on an error code from another build', () => {
+    const h = harness()
+    h.notifier.handle(stateEvent(snap('downloading')))
+    const weird = snap('error', { error: { code: 'held-paused' as never, message: 'Held' } })
+    expect(() => h.notifier.handle(stateEvent(weird))).not.toThrow()
+    expect(h.notices[0].body).toBe('model · Q4_K_M — Didn’t finish.')
+  })
+
   it('stays silent for re-sent states — exo registration re-emits completed on launch', () => {
     const h = harness({}, [snap('completed')])
     h.notifier.handle(stateEvent(snap('completed', { exoRegistration: { status: 'registered', message: null } })))

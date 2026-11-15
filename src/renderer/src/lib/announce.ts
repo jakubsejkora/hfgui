@@ -1,4 +1,4 @@
-import { ERROR_COPY } from '@shared/jobStates'
+import { errorCopy } from '@shared/jobStates'
 import type { DownloadJobSnapshot, JobState } from '@shared/types'
 import { jobActions } from './actions'
 import { toast } from './toastStore'
@@ -30,7 +30,7 @@ export function announceTransition(previous: JobState | undefined, job: Download
           : [{ label: 'Show in Finder', onClick: () => void jobActions.reveal(reveal) }]
     })
   } else if (job.state === 'error') {
-    const copy = job.error ? ERROR_COPY[job.error.code] : ERROR_COPY.unknown
+    const copy = errorCopy(job.error)
     toast('error', 'Download failed', {
       description: `${job.displayName} — ${copy.title}.`,
       actions: [{ label: 'View', onClick: () => useUiStore.getState().setView('downloads') }]

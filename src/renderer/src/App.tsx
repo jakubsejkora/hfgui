@@ -17,6 +17,7 @@ import { TooltipProvider } from './components/ui/tooltip'
 import { AppSidebar } from './components/app/AppSidebar'
 import { ConfirmDownloadDialog } from './components/app/ConfirmDownloadDialog'
 import { DownloadsDock } from './components/app/DownloadsDock'
+import { ErrorBoundary } from './components/app/ErrorBoundary'
 import { LinkDropOverlay } from './components/app/LinkDropOverlay'
 import { SiteHeader } from './components/app/SiteHeader'
 import { Toasts } from './components/app/Toasts'
@@ -114,11 +115,13 @@ export default function App() {
             {/* One scroll container per page visit (keyed), so each page starts at
                 the top and Browse can restore its own position. */}
             <div key={view} ref={scrollRoot} className="min-h-0 flex-1 overflow-y-auto">
-              {view === 'overview' && <OverviewView />}
-              {view === 'browse' && <BrowseView />}
-              {view === 'downloads' && <DownloadsView />}
-              {view === 'private-inference' && <PrivateInferenceView />}
-              {view === 'settings' && <SettingsView />}
+              <ErrorBoundary onHome={() => useUiStore.getState().setView('overview')}>
+                {view === 'overview' && <OverviewView />}
+                {view === 'browse' && <BrowseView />}
+                {view === 'downloads' && <DownloadsView />}
+                {view === 'private-inference' && <PrivateInferenceView />}
+                {view === 'settings' && <SettingsView />}
+              </ErrorBoundary>
             </div>
           </ScrollRootContext.Provider>
           <DownloadsDock />

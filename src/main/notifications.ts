@@ -1,4 +1,4 @@
-import { ERROR_COPY, isBusy } from '@shared/jobStates'
+import { errorCopy, isBusy } from '@shared/jobStates'
 import type { DownloadEvent, DownloadJobSnapshot, JobState } from '@shared/types'
 
 /*
@@ -40,7 +40,7 @@ export function noticeFor(job: DownloadJobSnapshot): DownloadNotice | null {
     }
   }
   if (job.state === 'error') {
-    const copy = job.error ? ERROR_COPY[job.error.code] : ERROR_COPY.unknown
+    const copy = errorCopy(job.error)
     return { jobId: job.jobId, title: 'Download failed', body: `${job.displayName} — ${copy.title}.` }
   }
   return null

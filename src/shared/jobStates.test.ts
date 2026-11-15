@@ -4,7 +4,9 @@ import {
   IN_PROGRESS_STATES,
   JOB_STATE_LABEL,
   RUNNING_STATES,
+  ERROR_COPY,
   compareJobs,
+  errorCopy,
   jobGroup
 } from './jobStates'
 import type { JobState } from './types'
@@ -65,5 +67,20 @@ describe('compareJobs', () => {
     const a = { state: 'downloading' as const, createdAt: 1 }
     const b = { state: 'downloading' as const, createdAt: 2 }
     expect([a, b].sort(compareJobs)).toEqual([b, a])
+  })
+})
+
+describe('errorCopy', () => {
+  it('explains known codes', () => {
+    expect(errorCopy({ code: 'disk-full', message: 'ENOSPC' })).toBe(ERROR_COPY['disk-full'])
+  })
+
+  it('falls back to the message for a code this build has never seen', () => {
+    // A real download list carried { code: 'held-paused' }, written by another
+    // build; looking it up blindly crashed the Downloads page.
+    const copy = errorCopy({ code: 'held-paused', message: 'Held, not failed: you had paused this download.' })
+    expect(copy).toEqual({ title: 'Didn’t finish', hint: 'Held, not failed: you had paused this download.' })
+    expect(errorCopy({ code: 'mystery', message: '' }).hint).toBe(ERROR_COPY.unknown.hint)
+    expect(errorCopy(null)).toBe(ERROR_COPY.unknown)
   })
 })

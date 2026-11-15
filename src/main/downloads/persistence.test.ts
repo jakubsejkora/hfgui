@@ -50,6 +50,13 @@ describe('restoreSnapshot', () => {
     expect(restoreSnapshot({ ...snapshot(), destination: { kind: 'ftp', baseDir: '/x' } })).toBeNull()
   })
 
+  it('keeps error codes this build does not know, but repairs a malformed error', () => {
+    const foreign = restoreSnapshot({ ...snapshot(), state: 'error', error: { code: 'held-paused', message: 'Held' } })
+    expect(foreign?.error).toEqual({ code: 'held-paused', message: 'Held' })
+    const broken = restoreSnapshot({ ...snapshot(), state: 'error', error: { message: 42 } })
+    expect(broken?.error).toEqual({ code: 'unknown', message: '' })
+  })
+
   it('fills optional fields an older version may not have written', () => {
     const { exoRegistration: _e, completedAt: _c, ...old } = snapshot()
     const restored = restoreSnapshot(old)

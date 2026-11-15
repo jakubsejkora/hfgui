@@ -124,3 +124,18 @@ export const ERROR_COPY: Record<DownloadErrorCode, { title: string; hint: string
     hint: 'Retry. If it keeps failing, the details below say why.'
   }
 }
+
+/**
+ * The copy for a job's error. Snapshots come from disk, and a download list
+ * written by another build (or edited by hand) can carry a code this build has
+ * never heard of — looking it up blindly crashed the whole Downloads page. An
+ * unknown code falls back to the error's own message, which says what it meant.
+ */
+export function errorCopy(
+  error: { code: string; message: string } | null | undefined
+): { title: string; hint: string } {
+  if (!error) return ERROR_COPY.unknown
+  const known = (ERROR_COPY as Record<string, { title: string; hint: string } | undefined>)[error.code]
+  if (known) return known
+  return { title: 'Didn’t finish', hint: error.message || ERROR_COPY.unknown.hint }
+}

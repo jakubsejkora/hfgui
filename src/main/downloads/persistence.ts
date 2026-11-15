@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'fs/promises'
 import { dirname } from 'path'
-import type { DownloadJobSnapshot, JobState } from '@shared/types'
+import type { DownloadErrorCode, DownloadJobSnapshot, JobState } from '@shared/types'
 
 const JOB_STATES: ReadonlySet<string> = new Set<JobState>([
   'queued',
@@ -69,7 +69,12 @@ export function restoreSnapshot(raw: unknown): DownloadJobSnapshot | null {
     files: restoredFiles,
     bytesDone: restoredFiles.reduce((sum, f) => sum + f.bytesDone, 0),
     totalBytes: restoredFiles.reduce((sum, f) => sum + f.size, 0),
-    error: isObject(raw.error) ? snap.error : null,
+    error: isObject(raw.error)
+      ? {
+          code: (typeof raw.error.code === 'string' ? raw.error.code : 'unknown') as DownloadErrorCode,
+          message: typeof raw.error.message === 'string' ? raw.error.message : ''
+        }
+      : null,
     completedAt: typeof raw.completedAt === 'number' ? raw.completedAt : null,
     exoRegistration: isObject(raw.exoRegistration) ? snap.exoRegistration : null
   }

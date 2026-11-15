@@ -13,7 +13,7 @@ import {
   X
 } from 'lucide-react'
 import { formatBytes, formatEta, formatSpeed, timeAgo } from '@shared/format'
-import { ERROR_COPY, isInProgress } from '@shared/jobStates'
+import { errorCopy, isInProgress } from '@shared/jobStates'
 import type { DownloadJobSnapshot, ExoRegistration } from '@shared/types'
 import { copyText, jobActions, openExternal, openOnHub } from '@/lib/actions'
 import { requestCancel, requestDelete } from '@/lib/cancelStore'
@@ -163,7 +163,7 @@ function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boole
   } else if (job.state === 'cancelled') {
     meta = 'Stopped — the partial file was deleted'
   } else if (job.error) {
-    const copy = ERROR_COPY[job.error.code]
+    const copy = errorCopy(job.error)
     meta = (
       <Tip content={job.error.message}>
         <span className="line-clamp-2 whitespace-normal">
