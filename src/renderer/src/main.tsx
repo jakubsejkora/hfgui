@@ -10,6 +10,15 @@ import './styles/globals.css'
 // Apply the theme class before first paint; useTheme keeps it in sync after.
 applyThemeClass()
 
+// Continuous animations (the live pulse) only run while hfgui is the focused
+// window; see .live-dot in globals.css.
+const syncFocus = (): void => {
+  document.documentElement.toggleAttribute('data-window-blurred', !document.hasFocus())
+}
+window.addEventListener('focus', syncFocus)
+window.addEventListener('blur', syncFocus)
+syncFocus()
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

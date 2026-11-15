@@ -234,15 +234,24 @@
 
 /* ----------------------------------------------------------------- motion */
 
+/*
+ * Only transform and opacity, in four steps. The first version animated
+ * box-shadow, so Chromium repainted every frame while anything downloaded
+ * (~3% GPU and 9% renderer CPU, each frame passed on to WindowServer and to
+ * screen sharing). A smooth transform/opacity pulse stops the repaints but
+ * still composites 60–120 frames a second (~2% GPU); four steps per beat
+ * cost about what a static dot does (~0.35%) — and a ring that grows in
+ * four quantized steps suits a 2-bit sphere.
+ */
 @keyframes live-ring {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--brand) 55%, transparent);
+    transform: scale(1);
+    opacity: 0.55;
   }
-  70% {
-    box-shadow: 0 0 0 5px transparent;
-  }
+  70%,
   100% {
-    box-shadow: 0 0 0 0 transparent;
+    transform: scale(2.7);
+    opacity: 0;
   }
 }
 
@@ -258,7 +267,22 @@
 @layer components {
   /** The "live" dot: running downloads and the in-progress count. */
   .live-dot {
-    animation: live-ring 1.8s ease-out infinite;
+    position: relative;
+  }
+  .live-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: inherit;
+    animation: live-ring 1.8s steps(4, end) infinite;
+  }
+  /* Nobody is looking: hfgui isn't the focused window (minimized, behind
+     others, or another app in use). Chromium keeps drawing a minimized
+     Electron window, so stop the pulse here rather than rely on it. */
+  [data-window-blurred] .live-dot::after {
+    animation: none;
+    opacity: 0;
   }
 
   .progress-indeterminate {

@@ -30,7 +30,9 @@ function Progress({
       <ProgressPrimitive.Indicator
         data-slot="progress-indicator"
         className={cn(
-          "h-full w-full flex-1 rounded-full bg-primary transition-transform duration-500 ease-out",
+          // No transition: progress arrives four times a second, so a glide never
+          // settled and the window redrew at the display's full frame rate.
+          "h-full w-full flex-1 rounded-full bg-primary",
           indeterminate && "progress-indeterminate w-2/5 transition-none",
           indicatorClassName
         )}
