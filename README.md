@@ -3,12 +3,17 @@
 A modern Electron app for browsing and downloading Hugging Face models — straight into the
 folders where **LM Studio** and **exo** pick them up. No manual file moving.
 
-![](docs/screenshot-browse.png)
+![](docs/screenshot-overview.png)
 
 ## What it does
 
+- **Overview** at a glance: what is downloading, what landed, free space where models go,
+  how big a model this Mac can run, a setup guide, and trending models that fit in memory.
 - **Browse** the Hugging Face Hub: search, sort by Trending / Most downloaded / Most liked /
-  Recently updated, filter by format (GGUF / MLX) and task.
+  Recently updated, filter by format (GGUF / MLX) and task — as cards or as a dense table.
+  Cards show parameters and the size you would actually download (the estimated Q4_K_M
+  file for GGUF repos), plus "In library" once a model is downloaded. Right-click any model
+  for "Download best fit to…" — the keyboard-reachable twin of drag-and-drop.
 - **Paste a link.** The search field doubles as an omnibox: paste any
   `huggingface.co/org/model` URL (or type a bare `org/model`) and it resolves straight to
   the model instead of keyword-searching. `/tree/`, `/blob/` and `/resolve/` links work too.
@@ -26,7 +31,13 @@ folders where **LM Studio** and **exo** pick them up. No manual file moving.
   back-pressure the socket, so TCP slows the sender — not just the disk writes. Switched on
   mid-download with a cap that wouldn't bite, it picks one under half the current speed instead.
 - **Downloads dock**: live progress from any view, with pause and cancel in reach. The
-  Downloads page keeps the history, Finder access and exo registration status.
+  Downloads page keeps the history (In progress / Finished / Failed), Finder access, exo
+  registration status, and plain-language help when something fails. Cancelling asks first,
+  because it deletes what was downloaded so far.
+- **Notifications**: a macOS notification when a download finishes or fails in the
+  background, a Dock badge with the number of active downloads, and the Dock icon's
+  progress bar.
+- **Keyboard**: ⌘K or / to search, ⌘1–5 for pages, ⌘B for the sidebar, ⌘, for Settings.
 - **Drag a card onto a destination** to start a download without opening the model. For
   GGUF repos that starts the quantization hfgui would have recommended for your RAM, and
   says which one it picked with Change / Undo. Every path is also a button.
@@ -39,10 +50,19 @@ folders where **LM Studio** and **exo** pick them up. No manual file moving.
 
 ## Design
 
-Dark-first, with a matching light theme (System / Light / Dark in Settings). Every model
-gets deterministic "cover art" — a gradient mesh derived from its repo id, with the hue
-family coming from the author — so a repo always looks the same and a page of results from
-one org reads as a set. It is pure CSS: no WebGL, and nothing animates inside the grid.
+A monochrome dashboard built on [shadcn/ui](https://ui.shadcn.com) — inset sidebar, page
+headers, cards and index tables — in light and dark (System / Light / Dark in Settings).
+There is exactly one accent, a signal red, and it only ever means *live*: running
+downloads, the in-progress count, and the quant hfgui recommends. Statuses are outline
+pills with a coloured dot.
+
+Every model gets a deterministic gradient avatar derived from its repo id, with the hue
+family coming from the author, so a repo always looks the same and a page of results from
+one org reads as a set.
+
+![](docs/screenshot-browse.png)
+![](docs/screenshot-detail.png)
+![](docs/screenshot-downloads.png)
 
 ## Development
 
@@ -52,7 +72,7 @@ Requires Node 22+.
 npm install
 npm run dev        # run with HMR
 npm run typecheck  # tsc over main/preload + renderer
-npm test           # vitest unit tests (link parsing, quant parsing, speed limiter, drop rules)
+npm test           # vitest unit tests (download engine, link/quant parsing, fit rules, notifications…)
 npm run build      # production bundles into out/
 npm start          # preview the production build
 npm run icon       # re-render build/icon.icns + icon.png from build/icon.svg
@@ -74,8 +94,14 @@ node scripts/screenshot.mjs /tmp/shots both   # UI screenshots, dark + light
 - `src/main/` — Electron main process: download manager (queue → job state machine →
   per-file streaming downloader), destination path adapters, settings + encrypted token store.
 - `src/preload/` — `contextBridge` shim exposing the typed `window.hfgui` API.
-- `src/renderer/` — React 19 + Tailwind v4 + Radix UI; talks to the HF API directly
-  (search / model info / file trees) and to main over IPC for downloads and settings.
+- `src/renderer/` — React 19 + Tailwind v4 + shadcn/ui (Radix); talks to the HF API
+  directly (search / model info / file trees) and to main over IPC for downloads and
+  settings. `components/ui/` is vendored from the shadcn new-york-v4 registry (lightly
+  adapted: tooltip delay, sheet timing, no mobile sidebar); `components/app/` is hfgui's
+  own. To add a shadcn component, take `files[].content` from
+  `https://ui.shadcn.com/r/styles/new-york-v4/<name>.json` and point its `cn` and
+  `@/registry/new-york-v4/…` imports at `@/lib/utils` and `@/components/ui/…` — the CLI's
+  install step trips over npm's allow-scripts policy here.
 - `src/shared/` — types, the IPC contract, GGUF quant parsing, link parsing, destination
   rules, drop planning, formatters. All pure and unit-tested.
 
