@@ -1,6 +1,6 @@
 import { createHash, type Hash } from 'crypto'
 import { createReadStream, createWriteStream } from 'fs'
-import { mkdir, open, rename, stat, unlink } from 'fs/promises'
+import { mkdir, open, rename, stat, unlink, writeFile } from 'fs/promises'
 import { dirname } from 'path'
 import { Readable, Transform } from 'stream'
 import { pipeline } from 'stream/promises'
@@ -17,6 +17,12 @@ export interface FileDownloadOptions {
   signal: AbortSignal
   /** Absolute bytes written for this file (including pre-existing partial bytes). */
   onProgress: (bytesDone: number) => void
+  /**
+   * Bytes of this file that were already on disk — a finished file, or a partial
+   * being resumed — and so never crossed the network. Called just before the
+   * matching onProgress, so callers can keep them out of throughput figures.
+   */
+  onDiskBytes?: (bytes: number) => void
   /**
    * Called with each network chunk before it is passed on; returns null to let it
    * through now, or a promise that holds it back (see BandwidthLimiter).
@@ -80,7 +86,8 @@ function classify(e: unknown): DownloadError {
  * Throws DownloadError; AbortError passes through untouched (pause/cancel).
  */
 export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
-  const { url, destPath, expectedSize, sha256, token, signal, onProgress, throttle } = opts
+  const { url, destPath, expectedSize, sha256, token, signal, onProgress, onDiskBytes, throttle } =
+    opts
   const partialPath = `${destPath}.partial`
 
   // Already fully downloaded in a previous run? Size-only on purpose: the file
@@ -88,11 +95,21 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
   // re-hashing 40 GB models on every resume would be pathological.
   const finalSize = await sizeOf(destPath)
   if (finalSize === expectedSize) {
+    onDiskBytes?.(expectedSize)
     onProgress(expectedSize)
     return
   }
 
   await mkdir(dirname(destPath), { recursive: true })
+
+  // An empty file has nothing to fetch, and the finalize branch below assumes a
+  // .partial exists — without this, one empty file failed the whole job.
+  if (expectedSize === 0) {
+    await writeFile(destPath, '')
+    await unlink(partialPath).catch(() => {})
+    onProgress(0)
+    return
+  }
 
   let startAt = (await sizeOf(partialPath)) ?? 0
   if (startAt > expectedSize) {
@@ -107,6 +124,7 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
       await checksumGuard(partialPath, hash.digest('hex'), sha256)
     }
     await finalize(partialPath, destPath)
+    onDiskBytes?.(expectedSize)
     onProgress(expectedSize)
     return
   }
@@ -167,6 +185,7 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
   }
 
   let bytesDone = startAt
+  onDiskBytes?.(startAt)
   onProgress(bytesDone)
   // Holding a chunk here backs the whole pipeline up to the socket, which is
   // what makes a speed cap slow the connection rather than just the disk.

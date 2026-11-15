@@ -119,7 +119,13 @@ if (!gotLock) {
       registerInExo: registerModelWithExo
     })
     registerIpc(manager, settings)
-    await manager.init()
+    // A damaged downloads.json must never cost the user their window: init()
+    // used to throw here, before createWindow(), leaving a Dock icon and nothing else.
+    try {
+      await manager.init()
+    } catch (e) {
+      console.error('[hfgui] could not restore downloads:', e)
+    }
 
     // Packaged builds take their icon from the bundle; without this, dev runs
     // would show Electron's in the Dock.

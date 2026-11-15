@@ -26,9 +26,28 @@ export function formatSpeed(bytesPerSec: number): string {
 
 export function formatEta(sec: number | null): string {
   if (sec == null || !isFinite(sec) || sec < 0) return '—'
-  if (sec < 60) return `${Math.ceil(sec)}s`
-  if (sec < 3600) return `${Math.floor(sec / 60)}m ${Math.ceil(sec % 60)}s`
-  return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`
+  // Round once, up front: rounding the seconds part on its own turned 119.4 s
+  // into "1m 60s".
+  const total = Math.ceil(sec)
+  if (total < 60) return `${total}s`
+  if (total < 3600) return `${Math.floor(total / 60)}m ${total % 60}s`
+  return `${Math.floor(total / 3600)}h ${Math.floor((total % 3600) / 60)}m`
+}
+
+/**
+ * Minute-granularity "time ago" for events in this app (a download started,
+ * finished). relativeTime() is for Hub timestamps and says "just now" for a
+ * whole hour.
+ */
+export function timeAgo(ms: number | null | undefined, now = Date.now()): string {
+  if (ms == null || !isFinite(ms)) return '—'
+  const sec = Math.max(0, (now - ms) / 1000)
+  if (sec < 45) return 'just now'
+  if (sec < 3600) return `${Math.max(1, Math.round(sec / 60))}m ago`
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`
+  if (sec < 86400 * 2) return 'yesterday'
+  if (sec < 86400 * 30) return `${Math.floor(sec / 86400)}d ago`
+  return relativeTime(new Date(ms).toISOString(), now)
 }
 
 export function relativeTime(iso: string | null | undefined, now = Date.now()): string {

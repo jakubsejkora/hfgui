@@ -96,6 +96,37 @@ describe('downloadFile', () => {
     expect((await stat(dest)).size).toBe(CONTENT.length)
   })
 
+  it('creates an empty file without touching the network', async () => {
+    const dest = join(dir, 'pkg', '__init__.py')
+    await downloadFile({
+      url: 'http://127.0.0.1:9/never-fetched',
+      destPath: dest,
+      expectedSize: 0,
+      sha256: null,
+      token: null,
+      signal: new AbortController().signal,
+      onProgress: () => {}
+    })
+    expect((await stat(dest)).size).toBe(0)
+  })
+
+  it('reports bytes found on disk separately from network bytes', async () => {
+    const dest = join(dir, 'model.gguf')
+    await writeFile(dest, CONTENT)
+    const fromDisk: number[] = []
+    await downloadFile({
+      url,
+      destPath: dest,
+      expectedSize: CONTENT.length,
+      sha256: null,
+      token: null,
+      signal: new AbortController().signal,
+      onProgress: () => {},
+      onDiskBytes: (n) => fromDisk.push(n)
+    })
+    expect(fromDisk).toEqual([CONTENT.length])
+  })
+
   it('rejects a corrupted resume where sizes match but content differs', async () => {
     const dest = join(dir, 'model.gguf')
     const corrupt = Buffer.from(CONTENT.subarray(0, 1000))

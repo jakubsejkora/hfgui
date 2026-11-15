@@ -1,5 +1,6 @@
 import type { ModelRef } from './modelRef'
 import type {
+  ActionResult,
   DestinationInfo,
   DiskSpace,
   DownloadEvent,
@@ -37,7 +38,8 @@ export const IPC = {
 export interface HfguiApi {
   startDownload(req: DownloadRequest): Promise<StartDownloadResult>
   pauseDownload(jobId: string): Promise<void>
-  resumeDownload(jobId: string): Promise<void>
+  /** Refused (ok: false) when another download already owns the same files. */
+  resumeDownload(jobId: string): Promise<ActionResult>
   cancelDownload(jobId: string, opts?: { deletePartial?: boolean }): Promise<void>
   removeDownload(jobId: string): Promise<void>
   /** Re-attempt registering a completed exo download in exo's model list. */

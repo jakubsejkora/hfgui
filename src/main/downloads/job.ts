@@ -53,6 +53,8 @@ export class DownloadJob {
 
   private deps: JobDeps
   private abortController: AbortController | null = null
+  /** The in-flight run(), so cancel() can wait for the state it causes. */
+  private runPromise: Promise<void> | null = null
   private pauseRequested = false
   private cancelRequested = false
   private deletePartialOnCancel = false
@@ -179,7 +181,16 @@ export class DownloadJob {
   }
 
   /** Runs the whole job; never rejects — terminal state is reflected in `state`. */
-  async run(): Promise<void> {
+  run(): Promise<void> {
+    const running = this.runToEnd()
+    this.runPromise = running
+    void running.finally(() => {
+      if (this.runPromise === running) this.runPromise = null
+    })
+    return running
+  }
+
+  private async runToEnd(): Promise<void> {
     this.abortController = new AbortController()
     this.pauseRequested = false
     const signal = this.abortController.signal
@@ -211,6 +222,12 @@ export class DownloadJob {
               onProgress: (bytesDone) => {
                 file.bytesDone = bytesDone
                 this.emitProgress()
+              },
+              // Bytes already on disk never crossed the network. Shift the speed
+              // sampler's baseline past them, or a file that already exists reads
+              // as a TB/s burst with a 0 s ETA.
+              onDiskBytes: (bytes) => {
+                this.lastEmitBytes += Math.max(0, bytes - file.bytesDone)
               }
             })
             break
@@ -281,11 +298,17 @@ export class DownloadJob {
   }
 
   async cancel(deletePartial: boolean): Promise<void> {
+    // A finished download has nothing left to cancel; relabelling it "Stopped"
+    // would misreport files that are complete on disk.
+    if (this.state === 'completed') return
     this.deletePartialOnCancel = deletePartial
     if (this.isActive) {
       this.cancelRequested = true
       this.abortController?.abort()
-      return // run() finishes the transition
+      // run() finishes the transition. Resolve only once it has, so callers can
+      // chain on the final state — remove-after-cancel ("Undo") relies on it.
+      await this.runPromise
+      return
     }
     if (deletePartial) await this.cleanupPartials()
     this.setState('cancelled')

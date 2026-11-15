@@ -1,5 +1,7 @@
 import { join } from 'path'
+import { BUSY_STATES, IN_PROGRESS_STATES, RESUMABLE_STATES } from '@shared/jobStates'
 import type {
+  ActionResult,
   DownloadEvent,
   DownloadJobSnapshot,
   DownloadRequest,
@@ -23,9 +25,6 @@ export interface ManagerDeps {
   checkDiskSpace?: typeof checkDiskSpace
   volumeIdFor?: typeof volumeIdFor
 }
-
-const ACTIVE_STATES = new Set(['queued', 'downloading', 'verifying'])
-const RESUMABLE_STATES = new Set(['paused', 'error', 'cancelled'])
 
 export class DownloadManager {
   private jobs = new Map<string, DownloadJob>()
@@ -66,7 +65,7 @@ export class DownloadManager {
     const snapshots = await this.persistence.load()
     for (const snap of snapshots) {
       // Anything that was in flight when the app quit resumes as paused.
-      if (ACTIVE_STATES.has(snap.state)) {
+      if (BUSY_STATES.has(snap.state)) {
         snap.state = 'paused'
         for (const f of snap.files) {
           if (f.state === 'active') f.state = 'pending'
@@ -113,16 +112,8 @@ export class DownloadManager {
       return { ok: false, code: 'invalid', message: 'No files to download' }
     }
 
-    const incoming = new Set(req.files.map((f) => f.path))
-    for (const job of this.jobs.values()) {
-      if (
-        job.repoId === req.repoId &&
-        job.jobDir === jobDir &&
-        (ACTIVE_STATES.has(job.state) || job.state === 'paused') &&
-        job.files.some((f) => incoming.has(f.path))
-      ) {
-        return { ok: false, code: 'duplicate', message: 'Already downloading to this destination' }
-      }
+    if (this.ownerOf(jobDir, req.files)) {
+      return { ok: false, code: 'duplicate', message: 'Already downloading to this destination' }
     }
 
     const totalBytes = req.files.reduce((sum, f) => sum + f.size, 0)
@@ -134,7 +125,7 @@ export class DownloadManager {
     const vol = await volumeId(jobDir)
     let committedBytes = 0
     for (const job of this.jobs.values()) {
-      if (!ACTIVE_STATES.has(job.state)) continue
+      if (!BUSY_STATES.has(job.state)) continue
       const jobVol = await volumeId(job.jobDir)
       if (vol === null || jobVol === null || jobVol === vol) {
         committedBytes += Math.max(0, job.totalBytes - job.bytesDone)
@@ -195,11 +186,37 @@ export class DownloadManager {
     this.jobs.get(jobId)?.pause()
   }
 
-  resume(jobId: string): void {
+  resume(jobId: string): ActionResult {
     const job = this.jobs.get(jobId)
-    if (!job || !RESUMABLE_STATES.has(job.state)) return
+    if (!job || !RESUMABLE_STATES.has(job.state)) return { ok: true }
+    // E.g. Retry on a failed job after a fresh Get of the same files: both
+    // would append to one .partial and corrupt it.
+    if (this.ownerOf(job.jobDir, job.files, job)) {
+      return { ok: false, message: 'Another download of these files is already in progress' }
+    }
     job.prepareResume()
     this.pump()
+    return { ok: true }
+  }
+
+  /** The unfinished job (other than `except`) already writing any of these files. */
+  private ownerOf(
+    jobDir: string,
+    files: ReadonlyArray<{ path: string }>,
+    except?: DownloadJob
+  ): DownloadJob | undefined {
+    const paths = new Set(files.map((f) => f.path))
+    for (const job of this.jobs.values()) {
+      if (
+        job !== except &&
+        job.jobDir === jobDir &&
+        IN_PROGRESS_STATES.has(job.state) &&
+        job.files.some((f) => paths.has(f.path))
+      ) {
+        return job
+      }
+    }
+    return undefined
   }
 
   async cancel(jobId: string, deletePartial = true): Promise<void> {

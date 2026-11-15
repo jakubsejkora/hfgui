@@ -112,6 +112,8 @@ export interface Settings {
   speedLimitEnabled: boolean
   /** Remembered separately from the switch, so turning the cap off and on keeps it. */
   speedLimitBytesPerSec: number
+  /** Native notification when a download finishes or fails while hfgui is in the background. */
+  notifications: boolean
 }
 
 export interface DestinationInfo {
@@ -144,3 +146,6 @@ export interface TokenStatus {
 export type StartDownloadResult =
   | { ok: true; jobId: string }
   | { ok: false; code: 'duplicate' | 'disk-full' | 'invalid'; message: string }
+
+/** Outcome of a job action that can be refused (e.g. resume). */
+export type ActionResult = { ok: true } | { ok: false; message: string }
