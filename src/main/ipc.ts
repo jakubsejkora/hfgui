@@ -54,6 +54,11 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
   ipcMain.handle(IPC.deleteDownload, (_e, jobId: string) => manager.deleteDownload(jobId))
   ipcMain.handle(IPC.getStorageReport, () => manager.storageReport())
   ipcMain.handle(IPC.cleanLeftovers, () => manager.cleanLeftovers())
+  ipcMain.handle(IPC.getUpdates, () => manager.getUpdates())
+  ipcMain.handle(IPC.checkForUpdates, () => manager.checkUpdates())
+  ipcMain.handle(IPC.updateDownload, (_e, jobId: string) =>
+    typeof jobId === 'string' ? manager.update(jobId) : { ok: false, message: 'Unknown download' }
+  )
 
   ipcMain.handle(IPC.getSettings, () => settings.get())
   ipcMain.handle(IPC.setSettings, async (_e, patch: Partial<Settings>) => {

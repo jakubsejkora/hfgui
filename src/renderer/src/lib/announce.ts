@@ -21,9 +21,13 @@ const WHERE: Record<DownloadJobSnapshot['destination']['kind'], string> = {
 export function announceTransition(previous: JobState | undefined, job: DownloadJobSnapshot): void {
   if (!previous || previous === job.state || !document.hasFocus()) return
   if (job.state === 'completed') {
-    const reveal = job.files.length === 1 ? `${job.jobDir}/${job.files[0].path}` : job.jobDir
-    toast('success', 'Download finished', {
-      description: `${job.displayName} is ready in ${WHERE[job.destination.kind]}.`,
+    // An update moves into the model's folder right after it finishes.
+    const dir = job.update?.pendingMove ?? job.jobDir
+    const reveal = job.files.length === 1 ? `${dir}/${job.files[0].path}` : dir
+    toast('success', job.update ? 'Update finished' : 'Download finished', {
+      description: job.update
+        ? `${job.displayName} is up to date. The previous version is kept beside it.`
+        : `${job.displayName} is ready in ${WHERE[job.destination.kind]}.`,
       actions:
         job.destination.kind === 'lmstudio'
           ? [{ label: 'Open in LM Studio', onClick: () => void jobActions.openInLmStudio(job.repoId) }]

@@ -1,4 +1,5 @@
-import { unlink } from 'fs/promises'
+import { existsSync } from 'fs'
+import { rename, rm, unlink } from 'fs/promises'
 import { dirname, join } from 'path'
 import { BUSY_STATES, IN_PROGRESS_STATES, RESUMABLE_STATES } from '@shared/jobStates'
 import type {
@@ -9,14 +10,30 @@ import type {
   DownloadRequest,
   ExoRegistration,
   StartDownloadResult,
-  StorageReport
+  StorageReport,
+  UpdateStatus
 } from '@shared/types'
+import { safeJoin } from '../pathSafety'
 import { checkDiskSpace, missingVolume, volumeIdFor } from '../system'
 import { BandwidthLimiter } from './bandwidth'
 import { DownloadJob, type JobDeps } from './job'
 import { IncompleteFilesLedger } from './ledger'
 import { Persistence } from './persistence'
 import { isInside, pruneEmptyDirs, sizeOf } from './storage'
+import {
+  HubMissingError,
+  canClone,
+  fetchFiles,
+  fetchLatest,
+  fetchRevision,
+  gitBlobOid,
+  planUpdate,
+  shareFile,
+  versionedName,
+  type HubOptions,
+  type LatestVersion,
+  type Planned
+} from './updates'
 
 export interface ManagerDeps {
   userDataDir: string
@@ -26,6 +43,9 @@ export interface ManagerDeps {
   /** Cap on combined download speed in bytes/sec, or null for none. */
   getSpeedLimit(): number | null
   registerInExo(repoId: string): Promise<ExoRegistration>
+  /** Where the Hugging Face API lives and how to reach it; tests use a local server. */
+  hub?: string
+  fetchHub?: typeof fetch
   /** Injectable for tests; default to the real fs-backed implementations. */
   checkDiskSpace?: typeof checkDiskSpace
   volumeIdFor?: typeof volumeIdFor
@@ -42,6 +62,9 @@ export class DownloadManager {
   private exoRegistrationsInFlight = new Set<string>()
   /** One budget for every job: the cap is on the connection, not per download. */
   private limiter = new BandwidthLimiter()
+  /** Newer versions of finished downloads, by job id. */
+  private updates = new Map<string, UpdateStatus>()
+  private checking: Promise<Record<string, UpdateStatus>> | null = null
 
   constructor(deps: ManagerDeps) {
     this.deps = deps
@@ -85,6 +108,10 @@ export class DownloadManager {
       }
       const job = DownloadJob.fromSnapshot(snap, this.jobDeps())
       this.jobs.set(job.jobId, job)
+    }
+    // An update that finished but hadn't taken over its model's folder yet.
+    for (const job of [...this.jobs.values()]) {
+      if (job.state === 'completed' && job.update?.pendingMove) await this.finishUpdate(job)
     }
     // First run with the ledger: adopt the data of downloads still in the list.
     if (!ledgerExisted) {
@@ -155,7 +182,8 @@ export class DownloadManager {
       .sort((a, b) => a.createdAt - b.createdAt)
       .slice(0, slots)
     for (const job of queued) {
-      void job.run().finally(() => {
+      void job.run().finally(async () => {
+        if (job.state === 'completed' && job.update?.pendingMove) await this.finishUpdate(job)
         if (job.state === 'completed' && job.destination.kind === 'exo') {
           void this.registerJobInExo(job)
         }
@@ -289,6 +317,7 @@ export class DownloadManager {
     if (job.isActive || job.state === 'queued') await job.cancel(true)
     const result = await this.purge(job)
     this.jobs.delete(jobId)
+    this.updates.delete(jobId)
     this.emit({ type: 'removed', jobId })
     this.persistence.schedule()
     return { ok: true, ...result }
@@ -404,8 +433,204 @@ export class DownloadManager {
     const job = this.jobs.get(jobId)
     if (!job || job.isActive) return
     this.jobs.delete(jobId)
+    this.updates.delete(jobId)
     this.emit({ type: 'removed', jobId })
     this.persistence.schedule()
+  }
+
+  private hubOptions(): HubOptions {
+    return { token: this.deps.getToken(), fetch: this.deps.fetchHub, hub: this.deps.hub }
+  }
+
+  /** Finished, not already replaced by a newer version, and not being updated right now. */
+  private updatable(job: DownloadJob): boolean {
+    if (job.state !== 'completed' || job.supersededBy || job.update?.pendingMove) return false
+    for (const other of this.jobs.values()) if (other.update?.of === job.jobId && other.update.pendingMove) return false
+    return true
+  }
+
+  getUpdates(): Record<string, UpdateStatus> {
+    return Object.fromEntries(this.updates)
+  }
+
+  /**
+   * Ask the Hub whether finished downloads have newer versions: one small
+   * request per repo, and its file list only when the repo has changed.
+   */
+  checkUpdates(): Promise<Record<string, UpdateStatus>> {
+    this.checking ??= this.runChecks().finally(() => {
+      this.checking = null
+    })
+    return this.checking
+  }
+
+  private async runChecks(): Promise<Record<string, UpdateStatus>> {
+    const byRepo = new Map<string, DownloadJob[]>()
+    for (const job of this.jobs.values()) {
+      if (this.updatable(job)) byRepo.set(job.repoId, [...(byRepo.get(job.repoId) ?? []), job])
+    }
+    const queue = [...byRepo.keys()]
+    const worker = async (): Promise<void> => {
+      for (let repo = queue.shift(); repo; repo = queue.shift()) {
+        const jobs = byRepo.get(repo)!
+        const checkedAt = Date.now()
+        try {
+          const { revision, lastModified } = await fetchRevision(repo, this.hubOptions())
+          const stale = jobs.filter((j) => j.revision !== revision)
+          for (const job of jobs) if (!stale.includes(job)) this.updates.set(job.jobId, { status: 'current', checkedAt })
+          if (stale.length === 0) continue
+          const latest = { revision, lastModified, files: await fetchFiles(repo, revision, this.hubOptions()) }
+          for (const job of stale) this.updates.set(job.jobId, toStatus(await this.planFor(job, latest), checkedAt))
+        } catch (e) {
+          const status: UpdateStatus =
+            e instanceof HubMissingError
+              ? { status: 'gone', checkedAt }
+              : { status: 'failed', checkedAt, message: (e as Error).message }
+          for (const job of jobs) this.updates.set(job.jobId, status)
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: 4 }, worker))
+    this.emit({ type: 'updates' })
+    return this.getUpdates()
+  }
+
+  /** Compare a download with the latest version, file by file. */
+  private async planFor(job: DownloadJob, latest: LatestVersion): Promise<Planned> {
+    const now = new Map(latest.files.map((f) => [f.path, f]))
+    // Small files have no sha256 on record; git's id for their content does the job.
+    const oids = new Map<string, string | null>()
+    for (const f of job.files) {
+      const next = now.get(f.path)
+      if (!next || next.lfs) continue
+      let path: string
+      try {
+        path = job.finalPathFor(f.path)
+      } catch {
+        continue
+      }
+      oids.set(f.path, await gitBlobOid(path, next.size))
+    }
+    return planUpdate(job, latest, oids)
+  }
+
+  /**
+   * Download the newer version of a finished download and keep the old one.
+   * Unchanged files are shared with it — no download, no extra disk space —
+   * and the new version takes over the model's folder once complete (see
+   * finishUpdate), so whatever points at that folder gets the update.
+   */
+  async update(jobId: string): Promise<ActionResult> {
+    const old = this.jobs.get(jobId)
+    if (!old || !this.updatable(old)) return { ok: false, message: 'Only a finished download can be updated' }
+
+    let planned: Planned
+    try {
+      planned = await this.planFor(old, await fetchLatest(old.repoId, this.hubOptions()))
+    } catch (e) {
+      return { ok: false, message: (e as Error).message }
+    }
+    if (planned.kind !== 'available') {
+      this.updates.set(jobId, { status: planned.kind, checkedAt: Date.now() })
+      this.emit({ type: 'updates' })
+      return {
+        ok: false,
+        message:
+          planned.kind === 'current'
+            ? 'Already up to date'
+            : 'Its files were renamed or removed on Hugging Face — open the model to pick a size again'
+      }
+    }
+    if (!this.updatable(old)) return { ok: false, message: 'This model is already being updated' }
+
+    const { plan } = planned
+    const staging = versionedName(old.jobDir, plan.revision, existsSync)
+    const clone = await canClone(old.jobDir)
+    const shared = new Set<string>()
+    for (const path of plan.same) {
+      try {
+        if (await shareFile(old.finalPathFor(path), safeJoin(staging, path), clone)) shared.add(path)
+      } catch {
+        /* downloaded instead */
+      }
+    }
+    const toFetch = plan.files.filter((f) => !shared.has(f.path)).reduce((sum, f) => sum + f.size, 0)
+    const problem = await this.spaceProblem(staging, toFetch)
+    if (problem) {
+      // Only clones and links of the old files: removing them leaves those intact.
+      await rm(staging, { recursive: true, force: true }).catch(() => {})
+      return { ok: false, message: problem.message }
+    }
+
+    const job = new DownloadJob(
+      {
+        repoId: old.repoId,
+        revision: plan.revision,
+        displayName: old.displayName,
+        format: old.format,
+        files: plan.files,
+        destination: old.destination
+      },
+      staging,
+      this.jobDeps()
+    )
+    for (const f of job.files) {
+      if (!shared.has(f.path)) continue
+      f.bytesDone = f.size
+      f.state = 'done'
+    }
+    job.update = { of: old.jobId, fromRevision: old.revision, pendingMove: old.jobDir }
+    this.jobs.set(job.jobId, job)
+    this.updates.delete(old.jobId)
+    job.setState('queued')
+    this.emit({ type: 'updates' })
+    this.pump()
+    return { ok: true }
+  }
+
+  /**
+   * A finished update takes over its model's folder and the version it
+   * replaces moves aside to `<folder>@<its revision>`: two renames on one
+   * volume. The old version's new place is saved before the second, so a stop
+   * in between can never leave its record pointing at the new files; init()
+   * finishes whatever is left.
+   */
+  private async finishUpdate(job: DownloadJob): Promise<void> {
+    const link = job.update
+    if (job.state !== 'completed' || !link?.pendingMove) return
+    const target = link.pendingMove
+    const old = this.jobs.get(link.of)
+    try {
+      if (job.jobDir !== target) {
+        if (existsSync(target)) {
+          const aside = versionedName(target, link.fromRevision, existsSync)
+          await rename(target, aside)
+          if (old?.jobDir === target) old.jobDir = aside
+          await this.persistence.flush()
+        } else if (old?.jobDir === target) {
+          // Stopped between the renames last time, before the old version's
+          // new place was saved: it went to the usual name.
+          const aside = `${target}@${link.fromRevision.slice(0, 7)}`
+          if (existsSync(aside)) old.jobDir = aside
+        }
+        await rename(job.jobDir, target)
+        job.jobDir = target
+      }
+    } catch (e) {
+      // The update works where it is; taking over the folder is retried next launch.
+      console.error('[hfgui] finished update could not take over its folder:', e)
+      return
+    }
+    job.update = { ...link, pendingMove: null }
+    if (old) {
+      old.supersededBy = job.jobId
+      this.updates.delete(old.jobId)
+      this.emit({ type: 'state', jobId: old.jobId, snapshot: old.snapshot() })
+    }
+    this.updates.set(job.jobId, { status: 'current', checkedAt: Date.now() })
+    this.emit({ type: 'state', jobId: job.jobId, snapshot: job.snapshot() })
+    this.emit({ type: 'updates' })
+    await this.persistence.flush()
   }
 
   async shutdown(): Promise<void> {
@@ -415,5 +640,17 @@ export class DownloadManager {
     }
     await this.persistence.flush()
     await this.ledger.flush()
+  }
+}
+
+function toStatus(planned: Planned, checkedAt: number): UpdateStatus {
+  if (planned.kind !== 'available') return { status: planned.kind, checkedAt }
+  return {
+    status: 'available',
+    checkedAt,
+    revision: planned.plan.revision,
+    lastModified: planned.plan.lastModified,
+    changed: planned.changed,
+    fetchBytes: planned.fetchBytes
   }
 }

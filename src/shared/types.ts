@@ -91,11 +91,50 @@ export interface DownloadJobSnapshot {
    * launch" only picks up the latter. Absent in snapshots from older versions.
    */
   pausedByUser?: boolean
+  /** Set on a download that updates an older one (see UpdateLink). */
+  update?: UpdateLink | null
+  /** A newer version of this model was downloaded; this one is kept alongside it. */
+  supersededBy?: string | null
 }
+
+/**
+ * A download that is a newer version of another. It is built in its own
+ * folder, sharing unchanged files with the old one (copy-on-write clones), and
+ * takes over the model's folder once complete; the old version moves aside to
+ * `<folder>@<its short revision>`.
+ */
+export interface UpdateLink {
+  /** The older download, which stays in the list. */
+  of: string
+  /** Its revision — names its folder once this version takes over. */
+  fromRevision: string
+  /** The folder this version moves into once complete; null once it has. */
+  pendingMove: string | null
+}
+
+/** What hfgui knows about a newer version of a finished download. */
+export type UpdateStatus =
+  | { status: 'current'; checkedAt: number }
+  | {
+      status: 'available'
+      checkedAt: number
+      revision: string
+      /** When the newer version was published (the repo's last change). */
+      lastModified: string | null
+      /** Files that differ or are new, by path. */
+      changed: string[]
+      /** What has to be downloaded; unchanged files are shared, not copied. */
+      fetchBytes: number
+    }
+  /** The files this download has are gone from the latest version (renamed or removed). */
+  | { status: 'gone'; checkedAt: number }
+  | { status: 'failed'; checkedAt: number; message: string }
 
 export type DownloadEvent =
   | { type: 'state'; jobId: string; snapshot: DownloadJobSnapshot }
   | { type: 'removed'; jobId: string }
+  /** Update checks have new results: ask for them again. */
+  | { type: 'updates' }
   | {
       type: 'progress'
       jobId: string

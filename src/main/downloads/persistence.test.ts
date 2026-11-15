@@ -39,7 +39,17 @@ function snapshot(overrides: Partial<DownloadJobSnapshot> = {}): DownloadJobSnap
 describe('restoreSnapshot', () => {
   it('keeps a well-formed snapshot intact', () => {
     const snap = snapshot()
-    expect(restoreSnapshot(snap)).toEqual(snap)
+    // Fields older versions didn't write come back as explicit nulls.
+    expect(restoreSnapshot(snap)).toEqual({ ...snap, update: null, supersededBy: null })
+  })
+
+  it('keeps the link between a model’s versions', () => {
+    const update = { of: 'job_old', fromRevision: 'abc', pendingMove: null }
+    expect(restoreSnapshot({ ...snapshot(), update, supersededBy: 'job_newer' })).toMatchObject({
+      update,
+      supersededBy: 'job_newer'
+    })
+    expect(restoreSnapshot({ ...snapshot(), update: { of: 42 } })?.update).toBeNull()
   })
 
   it('rejects entries that would crash the manager on launch', () => {

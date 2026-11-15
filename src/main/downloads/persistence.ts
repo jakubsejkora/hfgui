@@ -76,7 +76,16 @@ export function restoreSnapshot(raw: unknown): DownloadJobSnapshot | null {
         }
       : null,
     completedAt: typeof raw.completedAt === 'number' ? raw.completedAt : null,
-    exoRegistration: isObject(raw.exoRegistration) ? snap.exoRegistration : null
+    exoRegistration: isObject(raw.exoRegistration) ? snap.exoRegistration : null,
+    update:
+      isObject(raw.update) && typeof raw.update.of === 'string' && typeof raw.update.fromRevision === 'string'
+        ? {
+            of: raw.update.of,
+            fromRevision: raw.update.fromRevision,
+            pendingMove: typeof raw.update.pendingMove === 'string' ? raw.update.pendingMove : null
+          }
+        : null,
+    supersededBy: typeof raw.supersededBy === 'string' ? raw.supersededBy : null
   }
 }
 

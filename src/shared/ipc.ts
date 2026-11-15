@@ -11,7 +11,8 @@ import type {
   StartDownloadResult,
   StorageReport,
   SystemInfo,
-  TokenStatus
+  TokenStatus,
+  UpdateStatus
 } from './types'
 
 export const IPC = {
@@ -25,6 +26,9 @@ export const IPC = {
   deleteDownload: 'hfgui:delete-download',
   getStorageReport: 'hfgui:get-storage-report',
   cleanLeftovers: 'hfgui:clean-leftovers',
+  getUpdates: 'hfgui:get-updates',
+  checkForUpdates: 'hfgui:check-for-updates',
+  updateDownload: 'hfgui:update-download',
   downloadEvent: 'hfgui:download-event',
   getSettings: 'hfgui:get-settings',
   setSettings: 'hfgui:set-settings',
@@ -59,6 +63,12 @@ export interface HfguiApi {
   getStorageReport(): Promise<StorageReport>
   /** Delete data of unfinished downloads that are no longer in the list. */
   cleanLeftovers(): Promise<{ files: number; freedBytes: number }>
+  /** What hfgui last learned about newer versions of finished downloads, by job id. */
+  getUpdates(): Promise<Record<string, UpdateStatus>>
+  /** Ask Hugging Face now. */
+  checkForUpdates(): Promise<Record<string, UpdateStatus>>
+  /** Download the newer version of a finished download, keeping the old one. */
+  updateDownload(jobId: string): Promise<ActionResult>
   /** Returns an unsubscribe function. */
   onDownloadEvent(cb: (e: DownloadEvent) => void): () => void
 

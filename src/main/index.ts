@@ -181,6 +181,15 @@ if (!gotLock) {
     manager.onEvent((ev) => notifier.handle(ev))
     setInterval(() => notifier.tick(), 1000).unref()
 
+    // Newer versions of finished downloads: shortly after launch, then twice a
+    // day. Not under a test driver, where results would depend on the Hub.
+    if (!process.env.HFGUI_USER_DATA_DIR) {
+      const m = manager
+      const check = (): void => void m.checkUpdates().catch(() => {})
+      setTimeout(check, 20_000).unref()
+      setInterval(check, 12 * 60 * 60_000).unref()
+    }
+
     // Packaged builds take their icon from the bundle; without this, dev runs
     // would show Electron's in the Dock.
     if (process.platform === 'darwin' && !app.isPackaged) {

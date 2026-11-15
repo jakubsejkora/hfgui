@@ -53,6 +53,10 @@ export default function App() {
       storageTimer = setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['storage-report'] }), 800)
     }
     const unsubscribe = window.hfgui.onDownloadEvent((ev) => {
+      if (ev.type === 'updates') {
+        void queryClient.invalidateQueries({ queryKey: ['updates'] })
+        return
+      }
       const store = useDownloadsStore.getState()
       const previous = ev.type === 'state' ? store.jobs[ev.jobId]?.state : undefined
       store.applyEvent(ev)

@@ -1,11 +1,12 @@
-import { ArrowDownToLine, CheckCircle2, CircleAlert, Compass, HardDrive, Loader } from 'lucide-react'
+import { ArrowDownToLine, CheckCircle2, CircleAlert, Compass, HardDrive, Loader, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
 import { formatBytes, formatSpeed } from '@shared/format'
 import { compareJobs, jobGroup, type JobGroup } from '@shared/jobStates'
 import type { DownloadJobSnapshot } from '@shared/types'
 import { jobActions } from '@/lib/actions'
 import { totalSpeed, useDownloadsStore } from '@/lib/downloadsStore'
 import { usePrefs, type DownloadsTab } from '@/lib/prefsStore'
-import { useStorageReport } from '@/lib/queries'
+import { useStorageReport, useUpdates } from '@/lib/queries'
 import { toast } from '@/lib/toastStore'
 import { useUiStore } from '@/lib/uiStore'
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +20,7 @@ import {
   EmptyTitle
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DownloadsTable } from '@/components/app/DownloadsTable'
 import { Page, PageHeader } from '@/components/app/Page'
@@ -58,6 +60,18 @@ const EMPTY: Record<DownloadsTab, { icon: typeof Compass; title: string; descrip
   }
 }
 
+/** Each older version right after the version that replaced it, wherever the sort put it. */
+function olderVersionsBeneath(list: DownloadJobSnapshot[]): DownloadJobSnapshot[] {
+  const ids = new Set(list.map((j) => j.jobId))
+  const out: DownloadJobSnapshot[] = []
+  const place = (job: DownloadJobSnapshot): void => {
+    out.push(job)
+    for (const older of list) if (older.supersededBy === job.jobId) place(older)
+  }
+  for (const job of list) if (!job.supersededBy || !ids.has(job.supersededBy)) place(job)
+  return out
+}
+
 export function DownloadsView() {
   const jobs = useDownloadsStore((s) => s.jobs)
   const hydrated = useDownloadsStore((s) => s.hydrated)
@@ -66,8 +80,17 @@ export function DownloadsView() {
   const setPrefs = usePrefs((s) => s.set)
   const setView = useUiStore((s) => s.setView)
   const { data: report } = useStorageReport()
+  const { data: updates } = useUpdates()
+  const [checking, setChecking] = useState(false)
+  const updateCount = Object.values(updates ?? {}).filter((u) => u.status === 'available').length
 
-  const all = Object.values(jobs).sort(compareJobs)
+  const checkForUpdates = async (): Promise<void> => {
+    setChecking(true)
+    await jobActions.checkForUpdates()
+    setChecking(false)
+  }
+
+  const all = olderVersionsBeneath(Object.values(jobs).sort(compareJobs))
   const byGroup = (g: JobGroup): DownloadJobSnapshot[] => all.filter((j) => jobGroup(j.state) === g)
   const inProgress = byGroup('in-progress')
   const finished = byGroup('completed')
@@ -89,6 +112,7 @@ export function DownloadsView() {
     speed > 0 && formatSpeed(speed),
     finished.length > 0 && `${finished.length} finished`,
     failed.length > 0 && `${failed.length} need attention`,
+    updateCount > 0 && `${updateCount} ${updateCount === 1 ? 'update' : 'updates'} available`,
     heldBytes > 0 && `${formatBytes(heldBytes)} held by unfinished downloads`
   ].filter(Boolean)
 
@@ -106,9 +130,15 @@ export function DownloadsView() {
         }
         actions={
           finished.length > 0 && (
-            <Button variant="outline" size="sm" onClick={clearFinished}>
-              Clear finished
-            </Button>
+            <>
+              <Button variant="outline" size="sm" disabled={checking} onClick={() => void checkForUpdates()}>
+                {checking ? <Spinner /> : <RefreshCw />}
+                {checking ? 'Checking…' : 'Check for updates'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={clearFinished}>
+                Clear finished
+              </Button>
+            </>
           )
         }
       />

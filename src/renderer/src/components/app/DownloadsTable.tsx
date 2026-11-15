@@ -8,20 +8,23 @@ import {
   PanelRightOpen,
   Pause,
   Play,
+  RefreshCw,
   RotateCcw,
   Trash2,
   X
 } from 'lucide-react'
+import { describeChanges } from '@shared/changes'
 import { formatBytes, formatEta, formatSpeed, timeAgo } from '@shared/format'
 import { errorCopy, isInProgress } from '@shared/jobStates'
 import type { DownloadJobSnapshot, ExoRegistration } from '@shared/types'
 import { copyText, jobActions, openExternal, openOnHub } from '@/lib/actions'
 import { requestCancel, requestDelete } from '@/lib/cancelStore'
 import { STALL_MS, jobFraction, useDownloadsStore } from '@/lib/downloadsStore'
-import { useStorageReport } from '@/lib/queries'
+import { useStorageReport, useUpdates } from '@/lib/queries'
 import { useNow } from '@/lib/useNow'
 import { useUiStore } from '@/lib/uiStore'
 import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -51,6 +54,10 @@ const DEST_LABEL: Record<DownloadJobSnapshot['destination']['kind'], string> = {
 }
 
 const EXO_DASHBOARD_URL = 'http://localhost:52415'
+
+/** "Aug 29": the day a version was downloaded. */
+const shortDate = (ms: number): string =>
+  new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 
 /** Downloading or verifying: stop it first (Cancel), then it can be discarded. */
 const isRunningState = (state: DownloadJobSnapshot['state']): boolean =>
@@ -119,6 +126,7 @@ function ExoLine({ job, reg }: { job: DownloadJobSnapshot; reg: ExoRegistration 
 
 function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boolean }) {
   const { progress, stalled } = useLiveProgress(job)
+  const update = useUpdates().data?.[job.jobId]
   if (missing) {
     return (
       <div className="flex min-w-0 flex-col gap-1.5">
@@ -159,15 +167,28 @@ function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boole
   } else if (job.state === 'paused') {
     meta = `${formatBytes(job.bytesDone)} of ${formatBytes(job.totalBytes)} · ${pct}%`
   } else if (job.state === 'completed') {
-    meta =
-      job.destination.kind === 'exo' ? (
-        <ExoLine job={job} reg={job.exoRegistration} />
-      ) : (
-        <>
-          {formatBytes(job.totalBytes)}
-          {job.completedAt && <> · finished {timeAgo(job.completedAt)}</>}
-        </>
-      )
+    meta = job.supersededBy ? (
+      <span className="whitespace-normal">
+        {job.completedAt ? `Downloaded ${shortDate(job.completedAt)}, ` : ''}kept beside the newer version
+      </span>
+    ) : update?.status === 'available' ? (
+      <span className="whitespace-normal text-foreground">
+        Update available · {describeChanges(update.changed)}
+        {update.fetchBytes > 0 && <> · {formatBytes(update.fetchBytes)} to download</>}
+      </span>
+    ) : job.destination.kind === 'exo' ? (
+      <ExoLine job={job} reg={job.exoRegistration} />
+    ) : (
+      <>
+        {formatBytes(job.totalBytes)}
+        {job.completedAt && (
+          <>
+            {' '}
+            · {job.update ? 'updated' : 'finished'} {timeAgo(job.completedAt)}
+          </>
+        )}
+      </>
+    )
   } else if (job.state === 'cancelled') {
     meta = 'Stopped — the partial file was deleted'
   } else if (job.error) {
@@ -213,10 +234,21 @@ function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boole
 function RowActions({ job, missing }: { job: DownloadJobSnapshot; missing: boolean }) {
   const openModel = useUiStore((s) => s.openModel)
   const openTokenDialog = useUiStore((s) => s.setTokenDialogOpen)
+  const update = useUpdates().data?.[job.jobId]
   const { state } = job
 
   return (
     <div className="flex items-center justify-end gap-1">
+      {state === 'completed' && !missing && update?.status === 'available' && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void jobActions.update(job.jobId)}
+          data-testid={`update-${job.jobId}`}
+        >
+          <RefreshCw /> Update
+        </Button>
+      )}
       {state === 'completed' && missing && (
         <Button size="sm" variant="outline" onClick={() => void jobActions.redownload(job)}>
           <ArrowDownToLine /> Download again
@@ -373,7 +405,20 @@ export function DownloadsTable({ jobs }: { jobs: DownloadJobSnapshot[] }) {
                 <div className="flex min-w-0 items-center gap-3">
                   <ModelAvatar repoId={job.repoId} size="sm" />
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{job.displayName}</div>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-medium">{job.displayName}</span>
+                      {job.supersededBy ? (
+                        <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground">
+                          Older version
+                        </Badge>
+                      ) : (
+                        job.update?.pendingMove && (
+                          <Badge variant="outline" className="shrink-0 font-normal">
+                            Update
+                          </Badge>
+                        )
+                      )}
+                    </div>
                     <div className="truncate text-xs text-muted-foreground">
                       {job.repoId} · {DEST_LABEL[job.destination.kind]}
                     </div>

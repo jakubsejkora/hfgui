@@ -1,7 +1,8 @@
-import { Play, RotateCcw } from 'lucide-react'
+import { Play, RefreshCw, RotateCcw } from 'lucide-react'
 import type { DownloadJobSnapshot } from '@shared/types'
 import { jobActions } from '@/lib/actions'
 import { jobFraction } from '@/lib/downloadsStore'
+import { useUpdates } from '@/lib/queries'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { StatusPill } from './badges'
@@ -13,11 +14,17 @@ import { StatusPill } from './badges'
  */
 export function JobChip({ job }: { job: DownloadJobSnapshot }) {
   const pct = Math.floor(jobFraction(job) * 100)
+  const update = useUpdates().data?.[job.jobId]
   switch (job.state) {
     case 'completed':
       return (
         <span className="flex items-center gap-1.5">
           <StatusPill tone="success">Downloaded</StatusPill>
+          {update?.status === 'available' && (
+            <Button variant="outline" size="xs" onClick={() => void jobActions.update(job.jobId)}>
+              <RefreshCw /> Update
+            </Button>
+          )}
           {job.destination.kind === 'lmstudio' && (
             <Button
               variant="ghost"

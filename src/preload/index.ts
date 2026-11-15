@@ -13,6 +13,9 @@ const api: HfguiApi = {
   deleteDownload: (jobId) => ipcRenderer.invoke(IPC.deleteDownload, jobId),
   getStorageReport: () => ipcRenderer.invoke(IPC.getStorageReport),
   cleanLeftovers: () => ipcRenderer.invoke(IPC.cleanLeftovers),
+  getUpdates: () => ipcRenderer.invoke(IPC.getUpdates),
+  checkForUpdates: () => ipcRenderer.invoke(IPC.checkForUpdates),
+  updateDownload: (jobId) => ipcRenderer.invoke(IPC.updateDownload, jobId),
   onDownloadEvent: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, ev: DownloadEvent): void => cb(ev)
     ipcRenderer.on(IPC.downloadEvent, listener)

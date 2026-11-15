@@ -28,16 +28,22 @@ export interface NotifierDeps {
 const DESTINATION: Record<DownloadJobSnapshot['destination']['kind'], string> = {
   lmstudio: 'LM Studio',
   exo: 'exo',
-  custom: 'your folder'
+  custom: 'your models folder'
 }
 
 export function noticeFor(job: DownloadJobSnapshot): DownloadNotice | null {
   if (job.state === 'completed') {
-    return {
-      jobId: job.jobId,
-      title: 'Download finished',
-      body: `${job.displayName} is ready in ${DESTINATION[job.destination.kind]}.`
-    }
+    return job.update
+      ? {
+          jobId: job.jobId,
+          title: 'Update finished',
+          body: `${job.displayName} is up to date. The previous version is kept beside it.`
+        }
+      : {
+          jobId: job.jobId,
+          title: 'Download finished',
+          body: `${job.displayName} is ready in ${DESTINATION[job.destination.kind]}.`
+        }
   }
   if (job.state === 'error') {
     const copy = errorCopy(job.error)
@@ -85,6 +91,7 @@ export function createNotifier(deps: NotifierDeps, initial: DownloadJobSnapshot[
         }
         return
       }
+      if (ev.type === 'updates') return
       const { snapshot } = ev
       const previous = jobs.get(ev.jobId)?.state
       jobs.set(ev.jobId, {

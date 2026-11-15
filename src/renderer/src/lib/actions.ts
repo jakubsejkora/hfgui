@@ -37,6 +37,20 @@ export const jobActions = {
     await runAction(window.hfgui.cancelDownload(jobId), 'Couldn’t cancel')
     refreshStorage()
   },
+  /** The newer version, beside the old one (see DownloadManager.update). */
+  update: async (jobId: string): Promise<void> => {
+    const result = await runAction(window.hfgui.updateDownload(jobId), 'Couldn’t start the update')
+    if (result && !result.ok) toast('error', result.message)
+  },
+  checkForUpdates: async (): Promise<void> => {
+    const result = await runAction(window.hfgui.checkForUpdates(), 'Couldn’t check for updates')
+    if (!result) return
+    const available = Object.values(result).filter((u) => u.status === 'available').length
+    toast(
+      available > 0 ? 'info' : 'success',
+      available > 0 ? `${available} ${available === 1 ? 'update' : 'updates'} available` : 'Everything is up to date'
+    )
+  },
   remove: (jobId: string) =>
     runAction(window.hfgui.removeDownload(jobId), 'Couldn’t remove it from the list'),
   retryExo: (jobId: string) =>

@@ -6,7 +6,8 @@ import type {
   DownloadRequest,
   ExoRegistration,
   FileProgress,
-  JobState
+  JobState,
+  UpdateLink
 } from '@shared/types'
 import { downloadFile } from './fileDownloader'
 import type { LedgerEntry } from './ledger'
@@ -53,7 +54,8 @@ export class DownloadJob {
   readonly displayName: string
   readonly format: DownloadRequest['format']
   readonly destination: DownloadRequest['destination']
-  readonly jobDir: string
+  /** Moves once, when an update swaps folders with the version it replaces. */
+  jobDir: string
   files: FileProgress[]
   state: JobState = 'queued'
   error: DownloadJobSnapshot['error'] = null
@@ -62,6 +64,10 @@ export class DownloadJob {
   exoRegistration: ExoRegistration | null = null
   /** Paused by the user rather than by quitting — "Resume on launch" skips these. */
   pausedByUser = false
+  /** This download is a newer version of another one. */
+  update: UpdateLink | null = null
+  /** A newer version of this model was downloaded; this one is kept alongside. */
+  supersededBy: string | null = null
 
   private deps: JobDeps
   private abortController: AbortController | null = null
@@ -117,6 +123,8 @@ export class DownloadJob {
     job.completedAt = snap.completedAt
     job.exoRegistration = snap.exoRegistration ?? null
     job.pausedByUser = snap.pausedByUser === true
+    job.update = snap.update ? { ...snap.update } : null
+    job.supersededBy = snap.supersededBy ?? null
     return job
   }
 
@@ -149,7 +157,9 @@ export class DownloadJob {
       createdAt: this.createdAt,
       completedAt: this.completedAt,
       exoRegistration: this.exoRegistration ? { ...this.exoRegistration } : null,
-      pausedByUser: this.pausedByUser
+      pausedByUser: this.pausedByUser,
+      update: this.update ? { ...this.update } : null,
+      supersededBy: this.supersededBy
     }
   }
 

@@ -92,6 +92,15 @@ export function useDefaultDestination(format: ModelFormat): DestinationInfo | nu
   return defaultDestination(format, destinations, settings.preferredDestination)
 }
 
+/** Newer versions of finished downloads, by job id. Main asks the Hub; an 'updates' event refreshes this. */
+export function useUpdates() {
+  return useQuery({
+    queryKey: ['updates'],
+    queryFn: () => window.hfgui.getUpdates(),
+    staleTime: Infinity
+  })
+}
+
 export function useDiskSpace(path: string | null | undefined) {
   const busy = useDownloadsStore((s) => selectBusyCount(s) > 0)
   return useQuery({

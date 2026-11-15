@@ -58,6 +58,7 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
       set((s) => ({ jobs: without(s.jobs, ev.jobId), progress: without(s.progress, ev.jobId) }))
       return
     }
+    if (ev.type === 'updates') return
     // progress
     const job = get().jobs[ev.jobId]
     if (!job || job.state !== 'downloading') return
