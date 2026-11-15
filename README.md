@@ -53,8 +53,9 @@ your choice, or straight into **LM Studio** and **exo** if you use them.
 - **Model updates**: hfgui checks finished downloads against the Hub (shortly after launch,
   twice a day, or Downloads → Check for updates) and says what changed — "chat template and
   tokenizer · 17 KB to download". **Update** asks whether to replace the current version or
-  keep both, and downloads only the changed files; unchanged ones are shared with the old
-  version as APFS clones, so they take no extra space. The new version moves into the model's
+  keep both, and downloads only the changed files; unchanged weights are shared with the old
+  version as hard links, so they take no extra space (small files such as configs are copied,
+  so editing one version's never changes the other's). The new version moves into the model's
   folder (file by file, so other GGUF sizes in it are left alone), so anything pointing at it
   gets the update. Kept, the old version sits beside it as `<model>@<revision>`, listed as
   "Older version" until you delete it. Small downloads like these never wait for a slot.
