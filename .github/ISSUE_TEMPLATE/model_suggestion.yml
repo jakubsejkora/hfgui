@@ -1,0 +1,40 @@
+name: Model suggestion
+description: A model Discover should recommend, or a pick that should change
+labels: [models]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Discover's picks live in `src/shared/picks.ts`, with the rules for a good pick at the top. A pull request against it is the fastest way; this form works too.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Chat & writing
+        - Coding
+        - Vision
+        - Speech to text
+        - Embeddings
+    validations:
+      required: true
+  - type: input
+    id: repo
+    attributes:
+      label: Model
+      description: The Hugging Face repository — GGUF, MLX, or both.
+      placeholder: lmstudio-community/Some-Model-GGUF
+    validations:
+      required: true
+  - type: dropdown
+    id: memory
+    attributes:
+      label: For a Mac with
+      options: ['8 GB', '16 GB', '24 GB', '32 GB', '64 GB', '96 GB', '128 GB or more']
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this one
+      description: What it does better than the current pick — on your Mac, in your experience.
+    validations:
+      required: true

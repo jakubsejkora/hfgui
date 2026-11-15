@@ -5,7 +5,9 @@ import {
   useQuery,
   useQueryClient
 } from '@tanstack/react-query'
+import { pickKeys, popularOf, type PickFormat } from '@shared/discover'
 import { defaultDestination } from '@shared/destinationRules'
+import type { Category } from '@shared/picks'
 import type { DestinationInfo, ModelFormat, Settings } from '@shared/types'
 import { selectBusyCount, useDownloadsStore } from './downloadsStore'
 import { getModel, getModelSummary, getModelTree, searchModels, type SearchQuery } from './hfApi'
@@ -32,6 +34,37 @@ export function useBrowseQuery(search = '') {
     format,
     pipelineTag: task === 'all' ? null : task
   })
+}
+
+/**
+ * Discover's "Popular now": the Hub's most downloaded in a category, kept to
+ * trusted publishers and what fits this Mac (see popularOf). Asks for 100 at
+ * once — after filtering, a page of 30 would often leave too few.
+ */
+export function usePopular(category: Category, format: PickFormat) {
+  const { data: system } = useSystemInfo()
+  const popular = category.popular
+  const query = useQuery({
+    queryKey: ['popular', category.id, format],
+    enabled: popular !== null,
+    staleTime: 30 * 60_000,
+    queryFn: () =>
+      searchModels(
+        {
+          search: popular?.search ?? '',
+          sort: 'downloads',
+          format,
+          pipelineTag: popular?.pipelineTag ?? null,
+          limit: 100
+        },
+        null
+      )
+  })
+  const models =
+    popular && query.data && system
+      ? popularOf(query.data.models, popular, { memoryBytes: system.totalMemoryBytes, exclude: pickKeys(category) })
+      : []
+  return { ...query, models }
 }
 
 export function useModelSummary(repoId: string) {

@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 
-export type View = 'overview' | 'browse' | 'downloads' | 'private-inference' | 'guide' | 'settings'
+export type View = 'overview' | 'discover' | 'browse' | 'downloads' | 'private-inference' | 'guide' | 'settings'
 
-/** Sidebar order, which ⌘1–6 follow. */
-export const VIEWS: View[] = ['overview', 'browse', 'downloads', 'private-inference', 'guide', 'settings']
+/** Sidebar order, which ⌘1–7 follow. */
+export const VIEWS: View[] = ['overview', 'discover', 'browse', 'downloads', 'private-inference', 'guide', 'settings']
 
 /** Session-only UI state — see prefsStore for what survives a restart. */
 interface UiState {

@@ -13,20 +13,16 @@ import {
   X
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { comfortableModelBytes, ramFit } from '@shared/fit'
+import { macMemoryGB, recommendationsFor } from '@shared/discover'
+import { comfortableModelBytes } from '@shared/fit'
 import { formatBytes, formatSpeed, timeAgo } from '@shared/format'
+import { CATEGORIES } from '@shared/picks'
 import { compareJobs, isInProgress, isRunning } from '@shared/jobStates'
 import type { DownloadJobSnapshot } from '@shared/types'
 import { jobActions } from '@/lib/actions'
 import { jobFraction, totalSpeed, useDownloadsStore } from '@/lib/downloadsStore'
 import { usePrefs } from '@/lib/prefsStore'
-import {
-  useDefaultDestination,
-  useDiskSpace,
-  useModelSearch,
-  useStorageReport,
-  useSystemInfo
-} from '@/lib/queries'
+import { useDefaultDestination, useDiskSpace, useStorageReport, useSystemInfo } from '@/lib/queries'
 import { useUiStore } from '@/lib/uiStore'
 import { cn, destinationHolding } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -43,8 +39,9 @@ import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dot, JobStatusBadge, progressColor } from '@/components/app/badges'
 import { ModelAvatar } from '@/components/app/ModelAvatar'
-import { ModelCard, ModelCardSkeleton } from '@/components/app/ModelCard'
+import { ModelCardSkeleton } from '@/components/app/ModelCard'
 import { Page, PageHeader, Section } from '@/components/app/Page'
+import { PickCard } from '@/components/app/PickCard'
 
 /*
  * Copy note: this page can sit under the model sheet while the e2e drivers
@@ -311,50 +308,44 @@ function GuideCard() {
   )
 }
 
-/** Trending GGUF models, filtered to what this Mac can actually run. */
-function TrendingThatFits() {
+/**
+ * hfgui's pick in each category for this Mac's memory — the answer to "what
+ * should I download?", from src/shared/picks.ts (Discover has the rest).
+ */
+function RecommendedForThisMac() {
   const { data: system } = useSystemInfo()
-  const openModel = useUiStore((s) => s.openModel)
+  const format = usePrefs((s) => s.discoverFormat)
   const setView = useUiStore((s) => s.setView)
-  const setPrefs = usePrefs((s) => s.set)
-  // Same key as Browse's default listing, so the two share one cache entry.
-  const query = useModelSearch({ search: '', sort: 'trendingScore', format: 'gguf', pipelineTag: null })
-  const models = (query.data?.pages[0]?.models ?? [])
-    .filter((m) => !system || (m.sizeBytes != null && ramFit(m.sizeBytes, system.totalMemoryBytes) === 'fits'))
-    .slice(0, 6)
-
-  const browseTrending = (): void => {
-    setPrefs({ format: 'gguf', task: 'all', sort: 'trendingScore' })
-    setView('browse')
-  }
+  const memoryGB = system ? macMemoryGB(system.totalMemoryBytes) : null
 
   return (
     <Section
-      title="Trending models that fit this Mac"
-      description="This week’s most popular GGUF models whose recommended quant fits in memory."
+      title="Recommended for this Mac"
+      description="Our pick in each category for the memory in this Mac."
       actions={
-        <Button variant="ghost" size="sm" onClick={browseTrending}>
-          Browse all <ArrowRight />
+        <Button variant="ghost" size="sm" onClick={() => setView('discover')}>
+          Discover more <ArrowRight />
         </Button>
       }
     >
-      {query.isLoading ? (
+      {memoryGB == null ? (
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <ModelCardSkeleton key={i} />
+          {CATEGORIES.map((c) => (
+            <ModelCardSkeleton key={c.id} />
           ))}
         </div>
-      ) : models.length === 0 ? (
-        <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          {query.isError ? 'Couldn’t reach Hugging Face just now.' : 'No trending models fit right now.'}
-        </p>
       ) : (
         <div
           className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]"
-          data-testid="overview-trending"
+          data-testid="overview-picks"
         >
-          {models.map((m) => (
-            <ModelCard key={m.id} model={m} onClick={() => openModel(m.id)} />
+          {recommendationsFor(CATEGORIES, memoryGB, format).map(({ pick, categories }) => (
+            <PickCard
+              key={pick.name}
+              pick={pick}
+              format={format}
+              eyebrow={categories.map((c) => c.title).join(' · ')}
+            />
           ))}
         </div>
       )}
@@ -381,7 +372,7 @@ export function OverviewView() {
         <RecentDownloads className={guideDismissed ? undefined : 'lg:col-span-2'} />
         <GuideCard />
       </div>
-      <TrendingThatFits />
+      <RecommendedForThisMac />
     </Page>
   )
 }

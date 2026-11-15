@@ -19,8 +19,25 @@ node scripts/e2e-throttle.mjs [shotDir]      # speed cap: app + socket rate, liv
 `scripts/e2e-mlx.mjs` downloads ~140 MB into the user's real `~/.exo/models` and leaves it
 there — only run it when that is what you want. It skips if the folder already exists.
 
-`screenshot.mjs` shoots Overview, Browse (grid and table), the model sheet, Downloads,
-Settings, Private inference, the Guide and the first-run welcome. It seeds `downloads.json` with sample jobs (paused, failed,
+**hfgui's own updates** (GitHub Releases via electron-updater, `src/main/appUpdater.ts`).
+Only packaged builds update, so under the drivers (`Electron out/main`) the status is
+`unavailable` ("This is a development build…"). To see the UI in any state, inject one:
+`__hfguiTest.setAppUpdate({ status: 'ready', version: '0.3.0', checkedAt: Date.now() })`
+(also `idle` / `checking` / `downloading` with `percent` / `error` with `message`). A
+`ready` status shows the sidebar card (`app-update-card`, which restarts on click) and a
+toast once per version (`app-update-toast-restart`). Settings → About has
+`app-update-status`, `app-update-check` and `app-update-settings-restart`. With downloads busy,
+restarting opens an alertdialog first (`app-update-restart-confirm`). For the real thing,
+run `npm run build && npm run e2e:update -- [shotDir]`. It takes several minutes, needs the Developer ID
+identity, builds and signs two throwaway `hfgui-update-test` apps (own bundle id, profile at
+`~/Library/Application Support/hfgui-update-test`, deleted at the end), serves the newer
+from a local feed, restarts mid-download, and checks the relaunched copy resumed it. The
+release pipeline's dry run is `APPLE_KEYCHAIN_PROFILE=hfgui npm run release -- --no-upload`
+(add `--allow-dirty` for uncommitted work). It notarizes for real (minutes) and never
+uploads.
+
+`screenshot.mjs` shoots Overview, Discover, Browse (grid and table), the model sheet,
+Downloads, Settings, Private inference, the Guide and the first-run welcome. It seeds `downloads.json` with sample jobs (paused, failed,
 finished — nothing on disk), points `HF_HOME` at an empty dir so no personal token or
 account lands in a screenshot, and exits 1 on CSP errors, page errors, or an interactive
 element left inside a window drag region (Playwright clicks bypass drag regions, so this
@@ -72,12 +89,20 @@ Gotchas:
 - Reading a screenshot you have already read at the same path can serve a stale image.
   Write to a new filename, or confirm with pixels (`sips -z 1 1 -s format bmp`).
 - Test hooks on `window.__hfguiTest`: `openModel(id)`, `setView(view)` (views:
-  `overview`, `browse`, `downloads`, `private-inference`, `guide`, `settings`), `getJobs()`,
-  `getUi()`, `openRef(text)`, `beginDrag(model)` / `endDrag()` / `getDragModel()`,
-  `dropModel(model, kind)`, `refreshSettings()`.
+  `overview`, `discover`, `browse`, `downloads`, `private-inference`, `guide`, `settings`),
+  `getJobs()`, `getUi()`, `openRef(text)`, `beginDrag(model)` / `endDrag()` /
+  `getDragModel()`, `dropModel(model, kind)`, `refreshSettings()`, `setAppUpdate(status)`,
+  `setMemoryGB(gb)` (see the app as on a Mac with that much memory — fit hints and
+  Discover's picks; this Mac has 512 GB, so use it to check small-Mac layouts).
 - Useful selectors: `[data-testid="model-grid"] > button` (the grid's direct children must
   stay `<button draggable>` elements), `model-table`, `layout-grid` / `layout-table`,
-  `overview-trending`, `nav-{view}`, `[data-testid="search-input"]`,
+  `overview-picks` (Overview's recommendations, `> button` children), Discover's
+  `discover-tab-{chat|coding|vision|speech|embeddings}`, `discover-gguf` / `discover-mlx`,
+  `memory-ladder` with `ladder-{GB}` stops, `discover-picks` and `discover-popular` (both
+  `> button`), `discover-bigger-mac` (shown while a bigger Mac's stop is selected), Browse's
+  `remix-note` / `remix-toggle` (the default listing hides uncensored and adult remixes —
+  a driver taking the first card gets a regular model),
+  `nav-{view}`, `[data-testid="search-input"]`,
   `[data-testid^="download-"]`, `destination-{kind}` (radio items), `omnibox-open`,
   `clipboard-chip`, `sheet-error` (+ `data-error-code`), `downloads-dock`,
   `drop-target-{kind}` (only for places that exist on this Mac, like `destination-*`),

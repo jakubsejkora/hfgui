@@ -7,10 +7,28 @@ import { ModelContextMenu } from './ModelMenus'
 import { LibraryPill, ModelStats, SizeLabel } from './modelFacts'
 
 /**
- * A search result. The root stays a draggable <button> — the e2e drivers read
+ * A search result, or a recommendation with its reason (`note`) and what it's
+ * for (`eyebrow`). The root stays a draggable <button> — the e2e drivers read
  * `[data-testid="model-grid"] > button` and drag the first one.
  */
-export function ModelCard({ model, onClick }: { model: ModelSummary; onClick(): void }) {
+export function ModelCard({
+  model,
+  onClick,
+  eyebrow,
+  title,
+  subtitle,
+  note,
+  className
+}: {
+  model: ModelSummary
+  onClick(): void
+  eyebrow?: string
+  /** Instead of the repo's name and author — a recommendation says "Qwen3.8 27B". */
+  title?: string
+  subtitle?: string
+  note?: string
+  className?: string
+}) {
   const { dragProps, wasDragged } = useModelDragSource(model)
 
   return (
@@ -26,14 +44,18 @@ export function ModelCard({ model, onClick }: { model: ModelSummary; onClick(): 
           'group flex w-full cursor-pointer flex-col gap-3 rounded-xl border bg-card p-4 text-left text-card-foreground shadow-xs',
           'transition-[border-color,box-shadow] duration-150 hover:border-foreground/20 hover:shadow-md',
           'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
-          'data-[state=open]:border-foreground/20'
+          'data-[state=open]:border-foreground/20',
+          className
         )}
       >
+        {eyebrow && (
+          <div className="-mb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{eyebrow}</div>
+        )}
         <div className="flex w-full items-start gap-3">
           <ModelAvatar repoId={model.id} size="md" />
           <div className="min-w-0 flex-1 pt-0.5">
-            <div className="truncate text-sm leading-tight font-semibold">{model.name}</div>
-            <div className="mt-1 truncate text-xs text-muted-foreground">{model.author}</div>
+            <div className="truncate text-sm leading-tight font-semibold">{title ?? model.name}</div>
+            <div className="mt-1 truncate text-xs text-muted-foreground">{subtitle ?? model.author}</div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <LibraryPill repoId={model.id} />
@@ -41,7 +63,8 @@ export function ModelCard({ model, onClick }: { model: ModelSummary; onClick(): 
             <FormatBadge format={model.format} />
           </div>
         </div>
-        <div className="flex w-full items-center gap-3 text-xs text-muted-foreground tabular-nums">
+        {note && <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground">{note}</p>}
+        <div className="mt-auto flex w-full items-center gap-3 text-xs text-muted-foreground tabular-nums">
           <ModelStats model={model} />
           <span className="ml-auto flex min-w-0">
             <SizeLabel model={model} />

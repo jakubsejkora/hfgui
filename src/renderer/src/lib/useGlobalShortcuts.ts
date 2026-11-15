@@ -25,7 +25,7 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 /**
- * ⌘K or / → search · ⌘1–5 → pages · ⌘, → Settings. (⌘B, the sidebar, is handled
+ * ⌘K or / → search · ⌘1–7 → pages · ⌘, → Settings. (⌘B, the sidebar, is handled
  * by SidebarProvider.) "/" is ignored while typing: repo ids contain slashes.
  */
 export function useGlobalShortcuts(): void {
@@ -42,7 +42,7 @@ export function useGlobalShortcuts(): void {
         focusSearch()
         return
       }
-      if (mod && (e.key === ',' || /^[1-6]$/.test(e.key))) {
+      if (mod && (e.key === ',' || /^[1-7]$/.test(e.key))) {
         e.preventDefault()
         const ui = useUiStore.getState()
         if (ui.selectedModelId) ui.closeModel()

@@ -17,8 +17,24 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
   notarize: true
   target:
+    # The DMG is for first installs; the zip is what installed copies update
+    # from (Squirrel.Mac only takes zips).
     - target: dmg
+      arch:
+        - arm64
+    - target: zip
       arch:
         - arm64
 dmg:
   artifactName: ${productName}-${version}-${arch}.dmg
+  # Updates come from the zip. Leaving the DMG out of latest-mac.yml means
+  # notarizing and stapling it after the build (scripts/release.mjs) changes
+  # nothing the updater checks.
+  writeUpdateInfo: false
+# Where installed copies look for updates (written into the app as
+# app-update.yml). Must match REPO in src/shared/project.ts. Uploading is done
+# by scripts/release.mjs, not electron-builder.
+publish:
+  provider: github
+  owner: jakubsejkora
+  repo: hfgui

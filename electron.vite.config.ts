@@ -10,7 +10,9 @@ const { version } = JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // Bundled rather than left external: the packaged app ships out/ only, no
+    // node_modules (see electron-builder.yml `files`).
+    plugins: [externalizeDepsPlugin({ exclude: ['electron-updater'] })],
     resolve: {
       alias: { '@shared': resolve('src/shared') }
     }

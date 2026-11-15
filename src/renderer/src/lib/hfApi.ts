@@ -54,6 +54,8 @@ export interface SearchQuery {
   sort: SortKey
   format: FormatFilter
   pipelineTag: string | null
+  /** Results per page; 30 unless a caller filters heavily afterwards. */
+  limit?: number
 }
 
 export interface SearchPage {
@@ -243,7 +245,7 @@ export async function searchModels(
   let url = pageUrl
   if (!url) {
     const params = new URLSearchParams()
-    params.set('limit', '30')
+    params.set('limit', String(query.limit ?? 30))
     params.set('sort', query.sort)
     params.set('direction', '-1')
     if (query.search.trim()) params.set('search', query.search.trim())

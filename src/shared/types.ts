@@ -176,7 +176,25 @@ export interface Settings {
   speedLimitBytesPerSec: number
   /** Native notification when a download finishes or fails while hfgui is in the background. */
   notifications: boolean
+  /** Look for new versions of hfgui on GitHub and download them in the background. */
+  autoUpdate: boolean
 }
+
+/**
+ * hfgui's own updates — new releases on GitHub, not a model's newer revision
+ * (that's UpdateStatus). Found and downloaded in the background; installed on
+ * quit, or straight away with a restart.
+ */
+export type AppUpdateStatus =
+  /** This copy can't update itself; `reason` says why, in plain words. */
+  | { status: 'unavailable'; reason: string }
+  /** Up to date as of checkedAt; null = not checked yet this session. */
+  | { status: 'idle'; checkedAt: number | null }
+  | { status: 'checking'; checkedAt: number | null }
+  | { status: 'downloading'; version: string; percent: number; checkedAt: number }
+  /** Downloaded and verified; installs when hfgui quits. */
+  | { status: 'ready'; version: string; checkedAt: number }
+  | { status: 'error'; message: string; checkedAt: number | null }
 
 export interface DestinationInfo {
   kind: DestinationKind
@@ -192,6 +210,10 @@ export interface SystemInfo {
   totalMemoryBytes: number
   platform: string
   arch: string
+  /** macOS version, e.g. "15.6.1" — for bug reports. */
+  osVersion: string
+  /** e.g. "Apple M3 Pro" — for bug reports. */
+  cpuModel: string
   /** Suggested models folder for people who haven't chosen one (~/Models). */
   defaultModelsDir: string
 }

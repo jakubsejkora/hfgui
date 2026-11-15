@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in hfgui doesn't work the way it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Tip: **Settings → About → Report a bug** in hfgui opens this form with the version, macOS and Mac already filled in.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: And what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: The Hugging Face model, and the file or quantization, if it's about a particular download.
+      placeholder: org/model · Q4_K_M
+  - type: dropdown
+    id: destination
+    attributes:
+      label: Where the download was going
+      options:
+        - Models folder
+        - LM Studio
+        - exo
+        - Not about a download
+  - type: input
+    id: version
+    attributes:
+      label: hfgui version
+      description: Settings → About.
+      placeholder: 0.3.0
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: '15.6'
+  - type: input
+    id: mac
+    attributes:
+      label: Mac
+      placeholder: Apple M3 Pro, 36 GB
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Screenshots, error messages. If your Hugging Face token (hf_…) shows up anywhere, remove it first.

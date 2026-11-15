@@ -6,6 +6,7 @@ import { SpeedChip } from './SpeedChip'
 
 const TITLE: Record<View, string> = {
   overview: 'Overview',
+  discover: 'Discover',
   browse: 'Browse',
   downloads: 'Downloads',
   'private-inference': 'Private inference',

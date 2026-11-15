@@ -31,6 +31,14 @@ describe('SettingsStore', () => {
     expect(new SettingsStore(dir).get().notifications).toBe(false)
   })
 
+  it('checks for app updates by default — also for settings saved before the switch existed', async () => {
+    await writeFile(join(dir, 'settings.json'), JSON.stringify({ theme: 'dark' }))
+    const store = new SettingsStore(dir)
+    expect(store.get().autoUpdate).toBe(true)
+    await store.set({ autoUpdate: false })
+    expect(new SettingsStore(dir).get().autoUpdate).toBe(false)
+  })
+
   it('greets a fresh install, but not one set up before the welcome screen existed', async () => {
     const fresh = new SettingsStore(dir)
     expect(fresh.get().onboarded).toBe(false)

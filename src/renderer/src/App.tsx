@@ -2,7 +2,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, type CSSProperties } from 'react'
 import { defaultDestination } from '@shared/destinationRules'
 import { parseModelRef } from '@shared/modelRef'
+import type { AppUpdateStatus, SystemInfo } from '@shared/types'
 import { announceTransition } from './lib/announce'
+import { applyAppUpdate } from './lib/appUpdate'
 import { useDownloadsStore } from './lib/downloadsStore'
 import { useDragStore, type DragModel } from './lib/dragStore'
 import { usePrefs } from './lib/prefsStore'
@@ -15,6 +17,7 @@ import { useUiStore, type View } from './lib/uiStore'
 import { SidebarInset, SidebarProvider } from './components/ui/sidebar'
 import { TooltipProvider } from './components/ui/tooltip'
 import { AppSidebar } from './components/app/AppSidebar'
+import { RestartDialog } from './components/app/AppUpdate'
 import { ConfirmDownloadDialog } from './components/app/ConfirmDownloadDialog'
 import { DownloadsDock } from './components/app/DownloadsDock'
 import { ErrorBoundary } from './components/app/ErrorBoundary'
@@ -25,6 +28,7 @@ import { Toasts } from './components/app/Toasts'
 import { TokenDialog } from './components/app/TokenDialog'
 import { UpdateDialog } from './components/app/UpdateDialog'
 import { BrowseView } from './views/BrowseView'
+import { DiscoverView } from './views/DiscoverView'
 import { DownloadsView } from './views/DownloadsView'
 import { GuideView } from './views/GuideView'
 import { ModelDetailView } from './views/ModelDetailView'
@@ -70,9 +74,12 @@ export default function App() {
       ui.closeModel()
       ui.setView(target)
     })
+    // hfgui's own updates: main reports every step of a check and download.
+    const stopAppUpdate = window.hfgui.onAppUpdate(applyAppUpdate)
     return () => {
       unsubscribe()
       stopNavigate()
+      stopAppUpdate()
       if (storageTimer) clearTimeout(storageTimer)
     }
   }, [queryClient])
@@ -97,6 +104,13 @@ export default function App() {
       getDragModel: () => useDragStore.getState().model,
       // For drivers that change settings over IPC behind the UI's back.
       refreshSettings: () => invalidate(['settings']),
+      // Show an app-update state without a release to update to (screenshots).
+      setAppUpdate: (status: AppUpdateStatus) => applyAppUpdate(status),
+      // See hfgui as on a Mac with this much memory (fit hints, Discover's picks).
+      setMemoryGB: (gb: number) =>
+        queryClient.setQueryData<SystemInfo>(['system-info'], (info) =>
+          info ? { ...info, totalMemoryBytes: gb * 1024 ** 3 } : info
+        ),
       endDrag: () => useDragStore.getState().end(),
       dropModel: async (model: DragModel, kind?: string) => {
         if (!destinations) return
@@ -106,7 +120,7 @@ export default function App() {
         if (target) await dropDownload(model, target)
       }
     }
-  }, [destinations, settings, dropDownload, invalidate])
+  }, [destinations, settings, dropDownload, invalidate, queryClient])
 
   // First run: the welcome replaces the app until it's done. Settings are a
   // local read; until they arrive, show nothing rather than the wrong screen.
@@ -138,6 +152,7 @@ export default function App() {
             <div key={view} ref={scrollRoot} className="min-h-0 flex-1 overflow-y-auto">
               <ErrorBoundary onHome={() => useUiStore.getState().setView('overview')}>
                 {view === 'overview' && <OverviewView />}
+                {view === 'discover' && <DiscoverView />}
                 {view === 'browse' && <BrowseView />}
                 {view === 'downloads' && <DownloadsView />}
                 {view === 'private-inference' && <PrivateInferenceView />}
@@ -153,6 +168,7 @@ export default function App() {
       <TokenDialog />
       <ConfirmDownloadDialog />
       <UpdateDialog />
+      <RestartDialog />
       <LinkDropOverlay />
       <Toasts />
     </TooltipProvider>

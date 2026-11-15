@@ -2,13 +2,14 @@ import { BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'e
 import { IPC } from '@shared/ipc'
 import { parseModelRef } from '@shared/modelRef'
 import type { DownloadRequest, Settings } from '@shared/types'
+import type { AppUpdates } from './appUpdater'
 import { adapters, getDestinations } from './destinations'
 import type { DownloadManager } from './downloads/manager'
 import { isSafeRelPath, isValidRepoId } from './pathSafety'
 import type { SettingsStore } from './settings'
 import { checkDiskSpace, getSystemInfo } from './system'
 
-export function registerIpc(manager: DownloadManager, settings: SettingsStore): void {
+export function registerIpc(manager: DownloadManager, settings: SettingsStore, appUpdates: AppUpdates): void {
   const broadcast = manager.onEvent((ev) => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) win.webContents.send(IPC.downloadEvent, ev)
@@ -67,6 +68,8 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
     const next = await settings.set(patch)
     if (patch.theme !== undefined) nativeTheme.themeSource = next.theme
     manager.settingsChanged()
+    // Switched on: look now rather than at the next scheduled check, hours away.
+    if (patch.autoUpdate === true) void appUpdates.check()
     return next
   })
   ipcMain.handle(IPC.setHfToken, (_e, token: string | null) => settings.setToken(token))
@@ -102,6 +105,10 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
     if (!settings.get().clipboardWatch) return null
     return parseModelRef(clipboard.readText().slice(0, 2048))
   })
+
+  ipcMain.handle(IPC.getAppUpdate, () => appUpdates.get())
+  ipcMain.handle(IPC.checkAppUpdate, () => appUpdates.check())
+  ipcMain.handle(IPC.installAppUpdate, () => appUpdates.install())
 
   // Same deep link HF's "Use this model" button emits; launches or focuses LM Studio.
   ipcMain.handle(IPC.openInLmStudio, (_e, repoId: string) => {

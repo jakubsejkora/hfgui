@@ -1,6 +1,6 @@
 import { stat, statfs } from 'fs/promises'
 import { existsSync } from 'fs'
-import { homedir, totalmem } from 'os'
+import { cpus, homedir, totalmem } from 'os'
 import { dirname, join } from 'path'
 import type { DiskSpace, SystemInfo } from '@shared/types'
 
@@ -52,6 +52,9 @@ export function getSystemInfo(): SystemInfo {
     totalMemoryBytes: totalmem(),
     platform: process.platform,
     arch: process.arch,
+    // Electron's process.getSystemVersion() gives the marketing version ("15.6.1"); os.release() is Darwin's.
+    osVersion: (process as { getSystemVersion?: () => string }).getSystemVersion?.() ?? '',
+    cpuModel: cpus()[0]?.model ?? '',
     defaultModelsDir: join(homedir(), 'Models')
   }
 }
