@@ -5,7 +5,8 @@ import {
   useQuery,
   useQueryClient
 } from '@tanstack/react-query'
-import type { Settings } from '@shared/types'
+import { defaultDestination } from '@shared/destinationRules'
+import type { DestinationInfo, ModelFormat, Settings } from '@shared/types'
 import { selectBusyCount, useDownloadsStore } from './downloadsStore'
 import { getModel, getModelSummary, getModelTree, searchModels, type SearchQuery } from './hfApi'
 import { usePrefs } from './prefsStore'
@@ -83,6 +84,14 @@ export function useDestinations() {
  * downloading — the figure used to be read once per session and stayed put
  * through a 40 GB download.
  */
+/** Where a download of this format goes unless the user picks: their default, then hfgui's order. */
+export function useDefaultDestination(format: ModelFormat): DestinationInfo | null {
+  const { data: destinations } = useDestinations()
+  const { data: settings } = useSettings()
+  if (!destinations || !settings) return null
+  return defaultDestination(format, destinations, settings.preferredDestination)
+}
+
 export function useDiskSpace(path: string | null | undefined) {
   const busy = useDownloadsStore((s) => selectBusyCount(s) > 0)
   return useQuery({

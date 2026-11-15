@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 
-export type View = 'overview' | 'browse' | 'downloads' | 'private-inference' | 'settings'
+export type View = 'overview' | 'browse' | 'downloads' | 'private-inference' | 'guide' | 'settings'
 
-export const VIEWS: View[] = ['overview', 'browse', 'downloads', 'private-inference', 'settings']
+/** Sidebar order, which ⌘1–6 follow. */
+export const VIEWS: View[] = ['overview', 'browse', 'downloads', 'private-inference', 'guide', 'settings']
 
 /** Session-only UI state — see prefsStore for what survives a restart. */
 interface UiState {
@@ -13,7 +14,10 @@ interface UiState {
   search: string
   dockExpanded: boolean
   tokenDialogOpen: boolean
+  /** A Guide section to scroll to once the Guide opens. */
+  guideSection: string | null
   setView(view: View): void
+  openGuide(section?: string): void
   setSearch(search: string): void
   openModel(id: string): void
   closeModel(): void
@@ -27,7 +31,9 @@ export const useUiStore = create<UiState>((set) => ({
   search: '',
   dockExpanded: false,
   tokenDialogOpen: false,
+  guideSection: null,
   setView: (view) => set({ view }),
+  openGuide: (section) => set({ view: 'guide', guideSection: section ?? null, selectedModelId: null }),
   // Typing in the omnibox is always a request to browse.
   setSearch: (search) => set((s) => ({ search, view: search ? 'browse' : s.view })),
   openModel: (id) => set({ selectedModelId: id }),

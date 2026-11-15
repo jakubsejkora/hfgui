@@ -47,7 +47,7 @@ import { Tip } from './Tip'
 const DEST_LABEL: Record<DownloadJobSnapshot['destination']['kind'], string> = {
   lmstudio: 'LM Studio',
   exo: 'exo',
-  custom: 'Custom folder'
+  custom: 'Models folder'
 }
 
 const EXO_DASHBOARD_URL = 'http://localhost:52415'

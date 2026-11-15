@@ -1,7 +1,7 @@
 import { stat, statfs } from 'fs/promises'
 import { existsSync } from 'fs'
-import { totalmem } from 'os'
-import { dirname } from 'path'
+import { homedir, totalmem } from 'os'
+import { dirname, join } from 'path'
 import type { DiskSpace, SystemInfo } from '@shared/types'
 
 /** Walk up to the nearest existing ancestor, so `dir` may not exist yet. */
@@ -51,6 +51,7 @@ export function getSystemInfo(): SystemInfo {
   return {
     totalMemoryBytes: totalmem(),
     platform: process.platform,
-    arch: process.arch
+    arch: process.arch,
+    defaultModelsDir: join(homedir(), 'Models')
   }
 }

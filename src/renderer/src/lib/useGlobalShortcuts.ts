@@ -42,7 +42,7 @@ export function useGlobalShortcuts(): void {
         focusSearch()
         return
       }
-      if (mod && (e.key === ',' || /^[1-5]$/.test(e.key))) {
+      if (mod && (e.key === ',' || /^[1-6]$/.test(e.key))) {
         e.preventDefault()
         const ui = useUiStore.getState()
         if (ui.selectedModelId) ui.closeModel()

@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 
-const WHERE = { lmstudio: 'LM Studio', exo: 'exo', custom: 'your folder' } as const
+const WHERE = { lmstudio: 'LM Studio', exo: 'exo', custom: 'your models folder' } as const
 
 /** The one confirmation for destructive download actions: cancel, discard, delete files. */
 export function ConfirmDownloadDialog() {

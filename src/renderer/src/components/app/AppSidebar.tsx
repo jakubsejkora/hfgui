@@ -1,4 +1,4 @@
-import { ArrowDownToLine, Compass, KeyRound, LayoutDashboard, Settings, ShieldCheck } from 'lucide-react'
+import { ArrowDownToLine, BookOpen, Compass, KeyRound, LayoutDashboard, Settings, ShieldCheck } from 'lucide-react'
 import { selectBusyCount, useDownloadsStore } from '@/lib/downloadsStore'
 import { useHfAccount } from '@/lib/queries'
 import { useUiStore, type View } from '@/lib/uiStore'
@@ -23,7 +23,8 @@ const NAV: Array<{ view: View; label: string; icon: typeof Compass }> = [
   { view: 'overview', label: 'Overview', icon: LayoutDashboard },
   { view: 'browse', label: 'Browse', icon: Compass },
   { view: 'downloads', label: 'Downloads', icon: ArrowDownToLine },
-  { view: 'private-inference', label: 'Private inference', icon: ShieldCheck }
+  { view: 'private-inference', label: 'Private inference', icon: ShieldCheck },
+  { view: 'guide', label: 'Guide', icon: BookOpen }
 ]
 
 function NavButton({ view, label, icon: Icon }: (typeof NAV)[number]) {

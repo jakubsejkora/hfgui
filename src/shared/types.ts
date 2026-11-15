@@ -112,8 +112,12 @@ export interface Settings {
   /** null = auto-detect */
   lmstudioDir: string | null
   exoDir: string | null
-  /** Last used custom folder. */
+  /** The models folder: hfgui's own destination, for any app that reads plain files. */
   customDir: string | null
+  /** Where new downloads go unless one picks another place; null = hfgui's own order. */
+  preferredDestination: DestinationKind | null
+  /** The first-run welcome is done. Installs from before it existed count as done. */
+  onboarded: boolean
   maxConcurrentJobs: number
   autoResume: boolean
   theme: Theme
@@ -141,6 +145,8 @@ export interface SystemInfo {
   totalMemoryBytes: number
   platform: string
   arch: string
+  /** Suggested models folder for people who haven't chosen one (~/Models). */
+  defaultModelsDir: string
 }
 
 export interface DiskSpace {

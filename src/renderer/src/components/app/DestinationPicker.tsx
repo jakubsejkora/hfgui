@@ -1,18 +1,14 @@
-import { ExternalLink, FolderOpen, HardDrive } from 'lucide-react'
+import { FolderOpen, HardDrive } from 'lucide-react'
 import { useId } from 'react'
-import { destinationRejection } from '@shared/destinationRules'
+import { availableDestinations, destinationRejection } from '@shared/destinationRules'
 import { formatBytes } from '@shared/format'
-import type { DestinationInfo, DestinationKind, DownloadDestination, ModelFormat } from '@shared/types'
-import { openExternal } from '@/lib/actions'
+import type { DestinationInfo, DownloadDestination, ModelFormat } from '@shared/types'
 import { useDestinations, useDiskSpace } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 
-const INSTALL: Partial<Record<DestinationKind, { url: string; label: string }>> = {
-  lmstudio: { url: 'https://lmstudio.ai', label: 'Get LM Studio' },
-  exo: { url: 'https://github.com/exo-explore/exo', label: 'Get exo' }
-}
+const COLUMNS = ['grid-cols-1', 'grid-cols-2', 'grid-cols-3'] as const
 
 /** Last two path segments: enough to recognise, never an absolute path. */
 function shortPath(p: string): string {
@@ -27,8 +23,9 @@ interface DestinationPickerProps {
 }
 
 /**
- * Where a download lands, as radio "choice cards". Selecting never opens a
- * dialog by itself (arrow keys select too); choosing a folder is its own button.
+ * Where a download lands, as radio "choice cards": the models folder, plus LM
+ * Studio and exo when they're on this Mac. Selecting never opens a dialog by
+ * itself (arrow keys select too); choosing a folder is its own button.
  */
 export function DestinationPicker({ format, value, onChange }: DestinationPickerProps) {
   const { data: destinations } = useDestinations()
@@ -36,6 +33,7 @@ export function DestinationPicker({ format, value, onChange }: DestinationPicker
   const idBase = useId()
 
   if (!destinations) return null
+  const shown = availableDestinations(destinations)
 
   const pathFor = (info: DestinationInfo): string | null =>
     info.kind === 'custom' && value?.kind === 'custom' ? value.baseDir : info.path
@@ -58,18 +56,16 @@ export function DestinationPicker({ format, value, onChange }: DestinationPicker
           const path = info && pathFor(info)
           if (info && path) onChange({ kind: info.kind, baseDir: path })
         }}
-        className="grid grid-cols-3 gap-2"
+        className={cn('grid gap-2', COLUMNS[Math.min(shown.length, 3) - 1])}
         aria-label="Download destination"
       >
-        {destinations.map((info) => {
+        {shown.map((info) => {
           const path = pathFor(info)
           const rejection =
             info.kind === 'custom' ? null : destinationRejection(info.kind, format, info)
-          const notInstalled = info.kind !== 'custom' && !info.path
           const disabled = !!rejection || !path
           const selected = value?.kind === info.kind
           const id = `${idBase}-${info.kind}`
-          const install = notInstalled && !(info.kind === 'exo' && format !== 'mlx') ? INSTALL[info.kind] : undefined
           return (
             <div
               key={info.kind}
@@ -97,25 +93,12 @@ export function DestinationPicker({ format, value, onChange }: DestinationPicker
                   <span className="truncate text-xs text-muted-foreground" title={path ?? undefined}>
                     {info.kind === 'exo' && format !== 'mlx'
                       ? 'Runs MLX models only'
-                      : notInstalled
-                        ? 'Not installed on this Mac'
-                        : path
-                          ? shortPath(path)
-                          : 'No folder chosen yet'}
+                      : path
+                        ? shortPath(path)
+                        : 'No folder chosen yet'}
                   </span>
                 </span>
               </label>
-              {install && (
-                <Button
-                  variant="link"
-                  size="xs"
-                  className="h-auto justify-start self-start px-0 text-xs"
-                  onClick={() => openExternal(install.url)}
-                >
-                  {install.label}
-                  <ExternalLink />
-                </Button>
-              )}
               {info.kind === 'custom' && !path && (
                 <Button variant="outline" size="xs" className="self-start" onClick={() => void pickCustom()}>
                   <FolderOpen /> Choose folder…

@@ -29,14 +29,31 @@ const PREFERENCE: Record<ModelFormat, DestinationKind[]> = {
   other: ['lmstudio', 'custom']
 }
 
-/** The destination a download should land in when the user hasn't picked one. */
+/**
+ * The destination a download lands in when the user hasn't picked one for it:
+ * their default (Settings, or the welcome screen) if it can take this format,
+ * then hfgui's own order.
+ */
 export function defaultDestination(
   format: ModelFormat,
-  destinations: DestinationInfo[]
+  destinations: DestinationInfo[],
+  preferred: DestinationKind | null = null
 ): DestinationInfo | null {
-  for (const kind of PREFERENCE[format]) {
+  const order = preferred
+    ? [preferred, ...PREFERENCE[format].filter((kind) => kind !== preferred)]
+    : PREFERENCE[format]
+  for (const kind of order) {
     const info = destinations.find((d) => d.kind === kind)
     if (info?.path && canDownloadTo(kind, format, info)) return info
   }
   return null
+}
+
+/**
+ * What to offer as a place to download: the models folder always, an app only
+ * when it's on this Mac (or the user pointed hfgui at its folder). People who
+ * don't use LM Studio or exo never see them as greyed-out options.
+ */
+export function availableDestinations(destinations: DestinationInfo[]): DestinationInfo[] {
+  return destinations.filter((d) => d.kind === 'custom' || d.path !== null)
 }

@@ -1,8 +1,9 @@
-import { ExternalLink, FolderOpen, KeyRound, Monitor, Moon, RotateCcw, Sun } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { FolderOpen, KeyRound, Monitor, Moon, RotateCcw, Sun } from 'lucide-react'
+import { Fragment, type ReactNode } from 'react'
+import { availableDestinations } from '@shared/destinationRules'
 import { formatBytes } from '@shared/format'
-import type { DestinationKind, Settings, Theme } from '@shared/types'
-import { jobActions, openExternal } from '@/lib/actions'
+import type { DestinationInfo, DestinationKind, Settings, Theme } from '@shared/types'
+import { jobActions } from '@/lib/actions'
 import { usePrefs } from '@/lib/prefsStore'
 import {
   useDestinations,
@@ -13,7 +14,7 @@ import {
   useUpdateSettings
 } from '@/lib/queries'
 import { useUiStore } from '@/lib/uiStore'
-import { cn } from '@/lib/utils'
+import { cn, displayPath } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
@@ -123,14 +124,9 @@ const DIR_SETTING: Record<DestinationKind, keyof Settings> = {
 }
 
 const DIR_BLURB: Record<DestinationKind, string> = {
-  lmstudio: 'GGUF and MLX models land in {publisher}/{model}/ — LM Studio finds them on relaunch.',
-  exo: 'MLX models land in {org}--{model}/ — exo loads complete folders automatically.',
-  custom: 'For downloads that aren’t for a specific app. Remembers the last folder you used.'
-}
-
-const INSTALL_URL: Partial<Record<DestinationKind, string>> = {
-  lmstudio: 'https://lmstudio.ai',
-  exo: 'https://github.com/exo-explore/exo'
+  lmstudio: 'Saved as {publisher}/{model}/ in LM Studio’s library — it finds them on relaunch.',
+  exo: 'MLX models, saved as {org}--{model}/ — exo loads complete folders on its own.',
+  custom: 'Your own folder, one subfolder per model. Any app that opens model files can use it.'
 }
 
 function FolderRow({ kind, label }: { kind: DestinationKind; label: string }) {
@@ -142,19 +138,18 @@ function FolderRow({ kind, label }: { kind: DestinationKind; label: string }) {
 
   const browse = async (): Promise<void> => {
     const dir = await window.hfgui.pickDirectory({
-      title: `Choose the ${label} models folder`,
+      title: kind === 'custom' ? 'Choose your models folder' : `Choose the ${label} models folder`,
       defaultPath: info?.path ?? undefined
     })
     if (dir) update.mutate({ [DIR_SETTING[kind]]: dir })
   }
 
+  // Apps say whether hfgui found them or was pointed at them; the models folder is simply yours.
   const status =
-    info?.source === 'detected' ? (
-      <StatusPill tone="success">Detected</StatusPill>
+    kind === 'custom' ? null : info?.source === 'detected' ? (
+      <StatusPill tone="success">Found on this Mac</StatusPill>
     ) : info?.source === 'override' ? (
-      <StatusPill tone="neutral">{kind === 'custom' ? 'Chosen' : 'Custom location'}</StatusPill>
-    ) : kind !== 'custom' ? (
-      <StatusPill tone="warning">Not found</StatusPill>
+      <StatusPill tone="neutral">Custom location</StatusPill>
     ) : null
 
   return (
@@ -172,23 +167,108 @@ function FolderRow({ kind, label }: { kind: DestinationKind; label: string }) {
           title={info?.path ?? undefined}
         >
           <FolderOpen className="size-3.5 shrink-0" />
-          <span className="truncate">{info?.path ?? 'No folder set'}</span>
+          <span className="truncate">{info?.path ? displayPath(info.path) : 'No folder chosen yet'}</span>
         </div>
         {override && kind !== 'custom' && (
           <Button variant="ghost" size="sm" onClick={() => update.mutate({ [DIR_SETTING[kind]]: null })}>
             <RotateCcw /> Reset
           </Button>
         )}
-        {info?.source === 'none' && INSTALL_URL[kind] && (
-          <Button variant="ghost" size="sm" onClick={() => openExternal(INSTALL_URL[kind]!)}>
-            Get {label} <ExternalLink />
-          </Button>
-        )}
         <Button variant="outline" size="sm" onClick={() => void browse()}>
-          Browse…
+          {kind !== 'custom' ? 'Browse…' : info?.path ? 'Change…' : 'Choose…'}
         </Button>
       </div>
     </Row>
+  )
+}
+
+const AUTOMATIC = 'automatic'
+
+/** Only worth asking when there is more than one place to choose from. */
+function DefaultDestinationRow({ available }: { available: DestinationInfo[] }) {
+  const { data: settings } = useSettings()
+  const update = useUpdateSettings()
+  const preferred = settings?.preferredDestination
+  const value = available.some((d) => d.kind === preferred) ? preferred! : AUTOMATIC
+  const hasExo = available.some((d) => d.kind === 'exo')
+  return (
+    <Row
+      title="Default for new downloads"
+      description={
+        <>
+          Each download can still go somewhere else. Automatic uses an app that can open the model, otherwise
+          your models folder.{hasExo && ' exo takes MLX models only.'}
+        </>
+      }
+      control={
+        <Select
+          value={value}
+          onValueChange={(v) => update.mutate({ preferredDestination: v === AUTOMATIC ? null : (v as DestinationKind) })}
+        >
+          <SelectTrigger size="sm" className="w-40" aria-label="Default for new downloads">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="end">
+            <SelectItem value={AUTOMATIC}>Automatic</SelectItem>
+            {available.map((d) => (
+              <SelectItem key={d.kind} value={d.kind}>
+                {d.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      }
+    />
+  )
+}
+
+/** "LM Studio and exo", "exo"… — whichever apps aren't on this Mac. */
+function joinNames(names: string[]): string {
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]
+}
+
+function WhereModelsGo() {
+  const { data: destinations } = useDestinations()
+  const openGuide = useUiStore((s) => s.openGuide)
+  const available = destinations ? availableDestinations(destinations) : []
+  const apps = available.filter((d) => d.kind !== 'custom')
+  const missing = (destinations ?? []).filter((d) => d.kind !== 'custom' && !d.path).map((d) => d.label)
+
+  return (
+    <SettingsSection
+      title="Where models go"
+      description={
+        apps.length > 0
+          ? `Your models folder works with any app, and hfgui can save straight into ${apps.map((a) => a.label).join(' or ')} too.`
+          : 'Downloads go to your models folder, which any app can use.'
+      }
+    >
+      {apps.length > 0 && (
+        <>
+          <DefaultDestinationRow available={available} />
+          <Separator />
+        </>
+      )}
+      <FolderRow kind="custom" label="Models folder" />
+      {apps.map((d) => (
+        <Fragment key={d.kind}>
+          <Separator />
+          <FolderRow kind={d.kind} label={d.label} />
+        </Fragment>
+      ))}
+      {missing.length > 0 && (
+        <>
+          <Separator />
+          <p className="px-5 py-3 text-xs text-muted-foreground">
+            {joinNames(missing)} {missing.length > 1 ? 'show' : 'shows'} up here if you install{' '}
+            {missing.length > 1 ? 'them' : 'it'}.{' '}
+            <Button variant="link" size="xs" className="h-auto px-0 text-xs" onClick={() => openGuide('running')}>
+              Ways to run a model
+            </Button>
+          </p>
+        </>
+      )}
+    </SettingsSection>
   )
 }
 
@@ -301,7 +381,7 @@ function StorageRows() {
 
 const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ['⌘', 'K'], label: 'Search models (or press /)' },
-  { keys: ['⌘', '1–5'], label: 'Overview, Browse, Downloads, Private inference, Settings' },
+  { keys: ['⌘', '1–6'], label: 'Overview, Browse, Downloads, Private inference, Guide, Settings' },
   { keys: ['⌘', 'B'], label: 'Show or hide the sidebar' },
   { keys: ['⌘', ','], label: 'Settings' },
   { keys: ['Esc'], label: 'Close the model panel or dialog' }
@@ -314,7 +394,7 @@ export function SettingsView() {
 
   return (
     <Page className="max-w-5xl">
-      <PageHeader title="Settings" description="Where models land, how downloads behave, and how hfgui looks." />
+      <PageHeader title="Settings" description="Where models go, how downloads behave, and how hfgui looks." />
 
       <div className="flex flex-col gap-8">
         <SettingsSection title="Appearance" description="Follow the system appearance, or pick light or dark.">
@@ -342,16 +422,7 @@ export function SettingsView() {
           </Row>
         </SettingsSection>
 
-        <SettingsSection
-          title="Model folders"
-          description="Where each app looks for models. hfgui finds LM Studio and exo on its own; override them here."
-        >
-          <FolderRow kind="lmstudio" label="LM Studio" />
-          <Separator />
-          <FolderRow kind="exo" label="exo" />
-          <Separator />
-          <FolderRow kind="custom" label="Custom folder" />
-        </SettingsSection>
+        <WhereModelsGo />
 
         <SettingsSection
           title="Hugging Face"
@@ -446,8 +517,21 @@ export function SettingsView() {
           </ul>
         </SettingsSection>
 
-        <SettingsSection title="About" description="hfgui downloads Hugging Face models straight into LM Studio and exo.">
+        <SettingsSection
+          title="About"
+          description="hfgui downloads models from Hugging Face to this Mac: into your models folder, or straight into LM Studio and exo if you use them."
+        >
           <Row title="Version" control={<span className="font-mono text-sm text-muted-foreground">{__APP_VERSION__}</span>} />
+          <Separator />
+          <Row
+            title="Welcome screen"
+            description="Choose where models go and add a Hugging Face token, step by step."
+            control={
+              <Button variant="outline" size="sm" onClick={() => patch({ onboarded: false })}>
+                Show again
+              </Button>
+            }
+          />
         </SettingsSection>
       </div>
     </Page>

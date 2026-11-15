@@ -3,7 +3,7 @@ import type { PathAdapter } from './types'
 
 export const customAdapter: PathAdapter = {
   kind: 'custom',
-  label: 'Custom folder',
+  label: 'Models folder',
   async detect() {
     return null
   },

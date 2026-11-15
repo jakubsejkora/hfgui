@@ -193,6 +193,27 @@ for (const theme of themes) {
   await win.evaluate(() => window.__hfguiTest.setView('private-inference'))
   await win.waitForTimeout(1500)
   await win.screenshot({ path: join(outDir, `private-inference${suffix}.png`) })
+
+  await win.evaluate(() => window.__hfguiTest.setView('guide'))
+  await win.waitForSelector('#guide-how', { timeout: 10000 })
+  await win.waitForTimeout(400)
+  await assertNoDragTraps('guide')
+  await win.screenshot({ path: join(outDir, `guide${suffix}.png`) })
+
+  // The first-run welcome: shown again the way Settings → Show again does it.
+  await win.evaluate(async () => {
+    await window.hfgui.setSettings({ onboarded: false })
+    window.__hfguiTest.refreshSettings()
+  })
+  await win.waitForSelector('[data-testid="onboarding"]', { timeout: 10000 })
+  await win.waitForTimeout(400)
+  await assertNoDragTraps('welcome')
+  await win.screenshot({ path: join(outDir, `welcome${suffix}.png`) })
+  await win.evaluate(async () => {
+    await window.hfgui.setSettings({ onboarded: true })
+    window.__hfguiTest.refreshSettings()
+  })
+  await win.waitForSelector('[data-testid="search-input"]', { timeout: 10000 })
 }
 
 await app.close()

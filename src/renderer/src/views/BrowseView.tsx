@@ -118,7 +118,7 @@ export function BrowseView() {
         description={
           debounced && !pastedUrl
             ? `Results for “${debounced}” on the Hugging Face Hub`
-            : 'Models on the Hugging Face Hub, ready for LM Studio and exo.'
+            : 'Open models on the Hugging Face Hub, sized for this Mac.'
         }
       />
 

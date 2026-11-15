@@ -9,6 +9,7 @@ const TITLE: Record<View, string> = {
   browse: 'Browse',
   downloads: 'Downloads',
   'private-inference': 'Private inference',
+  guide: 'Guide',
   settings: 'Settings'
 }
 

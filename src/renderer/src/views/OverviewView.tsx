@@ -1,33 +1,34 @@
 import {
   ArrowDownToLine,
   ArrowRight,
+  BookOpen,
   Check,
+  ChevronRight,
   Compass,
   Cpu,
-  ExternalLink,
+  FolderOpen,
   HardDrive,
-  KeyRound,
+  Layers,
+  Play,
   X
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { defaultDestination } from '@shared/destinationRules'
 import { comfortableModelBytes, ramFit } from '@shared/fit'
 import { formatBytes, formatSpeed, timeAgo } from '@shared/format'
 import { compareJobs, isInProgress, isRunning } from '@shared/jobStates'
 import type { DownloadJobSnapshot } from '@shared/types'
-import { jobActions, openExternal } from '@/lib/actions'
+import { jobActions } from '@/lib/actions'
 import { jobFraction, totalSpeed, useDownloadsStore } from '@/lib/downloadsStore'
 import { usePrefs } from '@/lib/prefsStore'
 import {
-  useDestinations,
+  useDefaultDestination,
   useDiskSpace,
   useModelSearch,
   useStorageReport,
-  useSystemInfo,
-  useTokenStatus
+  useSystemInfo
 } from '@/lib/queries'
 import { useUiStore } from '@/lib/uiStore'
-import { cn } from '@/lib/utils'
+import { cn, destinationHolding } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -89,8 +90,7 @@ function Kpis() {
   const jobs = useDownloadsStore((s) => s.jobs)
   const speed = useDownloadsStore((s) => totalSpeed(s.jobs, s.progress))
   const { data: system } = useSystemInfo()
-  const { data: destinations } = useDestinations()
-  const target = destinations ? defaultDestination('gguf', destinations) : null
+  const target = useDefaultDestination('gguf')
   const { data: disk } = useDiskSpace(target?.path)
   const { data: report } = useStorageReport()
   const reclaimable = report?.leftovers.bytes ?? 0
@@ -147,7 +147,7 @@ function Kpis() {
               </Button>
             </span>
           ) : target ? (
-            `Where ${target.label} downloads land`
+            `On the drive with ${destinationHolding(target)}`
           ) : (
             'Choose a folder in Settings'
           )
@@ -255,128 +255,58 @@ function RecentDownloads({ className }: { className?: string }) {
   )
 }
 
-interface Step {
-  title: string
-  description: string
-  done: boolean
-  optional?: boolean
-  action?: ReactNode
-}
+const GUIDE_TOPICS: Array<{ section: string; title: string; icon: typeof BookOpen }> = [
+  { section: 'formats', title: 'GGUF or MLX?', icon: Layers },
+  { section: 'sizes', title: 'Which size fits this Mac?', icon: Cpu },
+  { section: 'location', title: 'Where your models go', icon: FolderOpen },
+  { section: 'running', title: 'Running a model', icon: Play }
+]
 
-function SetupGuide() {
-  const { data: destinations } = useDestinations()
-  const { data: tokenStatus } = useTokenStatus()
-  const hasFinished = useDownloadsStore((s) => Object.values(s.jobs).some((j) => j.state === 'completed'))
-  const dismissed = usePrefs((s) => s.setupGuideDismissed)
+/** New to this? A way into the Guide — dismissible, and never a to-do list. */
+function GuideCard() {
+  const dismissed = usePrefs((s) => s.guideCardDismissed)
   const setPrefs = usePrefs((s) => s.set)
-  const setView = useUiStore((s) => s.setView)
-  const openTokenDialog = useUiStore((s) => s.setTokenDialogOpen)
-
-  if (dismissed || !destinations || !tokenStatus) return null
-  const lmstudio = destinations.find((d) => d.kind === 'lmstudio')
-  const exo = destinations.find((d) => d.kind === 'exo')
-
-  const steps: Step[] = [
-    {
-      title: 'Connect LM Studio',
-      description: 'GGUF and MLX models land right where LM Studio finds them.',
-      done: !!lmstudio?.path,
-      action: (
-        <Button variant="outline" size="xs" onClick={() => openExternal('https://lmstudio.ai')}>
-          Get LM Studio <ExternalLink />
-        </Button>
-      )
-    },
-    {
-      title: 'Connect exo',
-      description: 'Run MLX models across your Macs.',
-      done: !!exo?.path,
-      optional: true,
-      action: (
-        <Button
-          variant="outline"
-          size="xs"
-          onClick={() => openExternal('https://github.com/exo-explore/exo')}
-        >
-          Get exo <ExternalLink />
-        </Button>
-      )
-    },
-    {
-      title: 'Add a Hugging Face token',
-      description: 'Unlocks gated models such as Llama and Gemma.',
-      done: !!tokenStatus.isSet,
-      optional: true,
-      action: (
-        <Button variant="outline" size="xs" onClick={() => openTokenDialog(true)}>
-          <KeyRound /> Add token
-        </Button>
-      )
-    },
-    {
-      title: 'Download your first model',
-      description: 'Pick a quant that fits this Mac — hfgui recommends one.',
-      done: hasFinished,
-      action: (
-        <Button size="xs" onClick={() => setView('browse')}>
-          Browse models
-        </Button>
-      )
-    }
-  ]
-  const done = steps.filter((s) => s.done).length
+  const openGuide = useUiStore((s) => s.openGuide)
+  if (dismissed) return null
 
   return (
     <Card className="gap-0 py-0 shadow-xs">
       <CardHeader className="border-b py-4 [.border-b]:pb-4">
-        <CardTitle>Setup guide</CardTitle>
-        <CardDescription className="tabular-nums">
-          {done} of {steps.length} done
-        </CardDescription>
+        <CardTitle>New to local models?</CardTitle>
+        <CardDescription>The basics, in a few minutes.</CardDescription>
         <CardAction>
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Hide the setup guide"
-            onClick={() => setPrefs({ setupGuideDismissed: true })}
+            aria-label="Hide this card"
+            onClick={() => setPrefs({ guideCardDismissed: true })}
           >
             <X />
           </Button>
         </CardAction>
-        <Progress value={(done / steps.length) * 100} className="col-span-2 mt-2" />
       </CardHeader>
       <CardContent className="px-0">
-        <ol className="divide-y">
-          {steps.map((step) => (
-            <li key={step.title} className="flex gap-3 px-5 py-3.5">
-              <span
-                className={cn(
-                  'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border',
-                  step.done ? 'border-foreground bg-foreground text-background' : 'border-dashed border-muted-foreground/50'
-                )}
-                aria-hidden
+        <ul className="divide-y">
+          {GUIDE_TOPICS.map(({ section, title, icon: Icon }) => (
+            <li key={section}>
+              <button
+                type="button"
+                onClick={() => openGuide(section)}
+                className="flex w-full items-center gap-3 px-5 py-3 text-left text-sm transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
               >
-                {step.done && <Check className="size-3" />}
-              </span>
-              <div className="min-w-0 flex-1 space-y-1">
-                <div className={cn('text-sm font-medium', step.done && 'text-muted-foreground')}>
-                  {step.title}
-                  {step.optional && !step.done && (
-                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">Optional</span>
-                  )}
-                  <span className="sr-only">{step.done ? ' — done' : ' — to do'}</span>
-                </div>
-                {!step.done && (
-                  <>
-                    <p className="text-xs leading-relaxed text-muted-foreground">{step.description}</p>
-                    <div className="pt-1">{step.action}</div>
-                  </>
-                )}
-              </div>
+                <Icon className="size-4 shrink-0 text-muted-foreground" />
+                <span className="flex-1">{title}</span>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+              </button>
             </li>
           ))}
-        </ol>
+        </ul>
       </CardContent>
+      <CardFooter className="border-t px-5 py-3 [.border-t]:pt-3">
+        <Button variant="link" size="xs" className="h-auto px-0" onClick={() => openGuide()}>
+          Read the whole guide
+        </Button>
+      </CardFooter>
     </Card>
   )
 }
@@ -434,12 +364,12 @@ function TrendingThatFits() {
 
 export function OverviewView() {
   const setView = useUiStore((s) => s.setView)
-  const guideDismissed = usePrefs((s) => s.setupGuideDismissed)
+  const guideDismissed = usePrefs((s) => s.guideCardDismissed)
   return (
     <Page>
       <PageHeader
         title="Overview"
-        description="Downloads, storage and setup at a glance."
+        description="Downloads and storage at a glance."
         actions={
           <Button size="sm" onClick={() => setView('browse')}>
             <Compass /> Browse models
@@ -449,7 +379,7 @@ export function OverviewView() {
       <Kpis />
       <div className={cn('grid gap-4', !guideDismissed && 'lg:grid-cols-3')}>
         <RecentDownloads className={guideDismissed ? undefined : 'lg:col-span-2'} />
-        <SetupGuide />
+        <GuideCard />
       </div>
       <TrendingThatFits />
     </Page>

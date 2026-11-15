@@ -1,6 +1,6 @@
 import { ArrowDownToLine, ChevronUp, Pause, Play, X } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
-import { destinationRejection } from '@shared/destinationRules'
+import { availableDestinations, destinationRejection } from '@shared/destinationRules'
 import { formatBytes, formatEta, formatSpeed } from '@shared/format'
 import { compareJobs, isInProgress } from '@shared/jobStates'
 import type { DestinationInfo, DownloadJobSnapshot, ModelFormat } from '@shared/types'
@@ -213,7 +213,7 @@ export function DownloadsDock() {
               <ArrowDownToLine className="size-4" />
               Save {dragModel.name} to
             </span>
-            {destinations.map((info) => (
+            {availableDestinations(destinations).map((info) => (
               <DestinationBay
                 key={info.kind}
                 info={info}

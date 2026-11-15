@@ -7,7 +7,7 @@ import { useUiStore } from './uiStore'
 const WHERE: Record<DownloadJobSnapshot['destination']['kind'], string> = {
   lmstudio: 'LM Studio',
   exo: 'exo',
-  custom: 'your folder'
+  custom: 'your models folder'
 }
 
 /**

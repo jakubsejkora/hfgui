@@ -19,7 +19,7 @@ interface Prefs {
   sort: SortKey
   layout: BrowseLayout
   sidebarOpen: boolean
-  setupGuideDismissed: boolean
+  guideCardDismissed: boolean
   downloadsTab: DownloadsTab
 }
 
@@ -33,7 +33,7 @@ export const DEFAULT_PREFS: Prefs = {
   sort: 'trendingScore',
   layout: 'grid',
   sidebarOpen: true,
-  setupGuideDismissed: false,
+  guideCardDismissed: false,
   downloadsTab: 'all'
 }
 
@@ -50,7 +50,7 @@ export function sanitizePrefs(stored: unknown): Prefs {
     sort: SORTS.includes(s.sort as SortKey) ? (s.sort as SortKey) : DEFAULT_PREFS.sort,
     layout: s.layout === 'table' ? 'table' : 'grid',
     sidebarOpen: s.sidebarOpen !== false,
-    setupGuideDismissed: s.setupGuideDismissed === true,
+    guideCardDismissed: s.guideCardDismissed === true,
     downloadsTab: TABS.includes(s.downloadsTab as DownloadsTab)
       ? (s.downloadsTab as DownloadsTab)
       : DEFAULT_PREFS.downloadsTab

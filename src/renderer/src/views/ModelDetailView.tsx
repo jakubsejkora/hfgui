@@ -23,7 +23,7 @@ import type { DownloadDestination, DownloadJobSnapshot, TreeFile } from '@shared
 import { copyModelLink, openOnHub } from '@/lib/actions'
 import { useDownloadsStore } from '@/lib/downloadsStore'
 import { HfApiError, type ModelDetail } from '@/lib/hfApi'
-import { useDestinations, useInvalidate, useModel, useModelTree, useTokenStatus } from '@/lib/queries'
+import { useDestinations, useInvalidate, useModel, useModelTree, useSettings, useTokenStatus } from '@/lib/queries'
 import { toast } from '@/lib/toastStore'
 import { useUiStore } from '@/lib/uiStore'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -193,6 +193,7 @@ export function ModelDetailView() {
   const repoId = model?.id ?? selectedModelId
   const tree = useModelTree(model?.id ?? null, model ? (model.sha ?? 'main') : null)
   const { data: destinations } = useDestinations()
+  const { data: settings } = useSettings()
   const { data: tokenStatus } = useTokenStatus()
 
   // Only this repo's jobs: subscribing to the whole map re-rendered the sheet
@@ -208,10 +209,10 @@ export function ModelDetailView() {
   // explicit pick is never overridden.
   useEffect(() => setDestination(null), [selectedModelId])
   useEffect(() => {
-    if (destination || !model || !destinations) return
-    const info = defaultDestination(model.format, destinations)
+    if (destination || !model || !destinations || !settings) return
+    const info = defaultDestination(model.format, destinations, settings.preferredDestination)
     if (info?.path) setDestination({ kind: info.kind, baseDir: info.path })
-  }, [destination, model, destinations])
+  }, [destination, model, destinations, settings])
 
   const gguf = useMemo(
     () => (model?.format === 'gguf' && tree.data ? groupGgufFiles(tree.data) : null),

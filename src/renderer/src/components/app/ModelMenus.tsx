@@ -1,6 +1,6 @@
 import { ArrowDownToLine, Copy, ExternalLink, MoreHorizontal, PanelRightOpen } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { destinationRejection } from '@shared/destinationRules'
+import { availableDestinations, destinationRejection } from '@shared/destinationRules'
 import type { DestinationInfo } from '@shared/types'
 import { copyModelLink, openOnHub } from '@/lib/actions'
 import type { ModelSummary } from '@/lib/hfApi'
@@ -50,7 +50,7 @@ function useModelMenu(model: MenuModel) {
   const targets: Target[] =
     model.format === 'other' || !destinations
       ? []
-      : destinations.map((info) => ({
+      : availableDestinations(destinations).map((info) => ({
           info,
           disabledReason: destinationRejection(info.kind, model.format, info)
         }))
@@ -65,7 +65,7 @@ function useModelMenu(model: MenuModel) {
 }
 
 const targetLabel = (t: Target): string =>
-  t.info.kind === 'custom' && !t.info.path ? 'Custom folder…' : t.info.label
+  t.info.kind === 'custom' && !t.info.path ? 'Models folder…' : t.info.label
 
 export function ModelContextMenu({ model, children }: { model: MenuModel; children: ReactNode }) {
   const menu = useModelMenu(model)

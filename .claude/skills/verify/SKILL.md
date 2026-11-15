@@ -20,7 +20,7 @@ node scripts/e2e-throttle.mjs [shotDir]      # speed cap: app + socket rate, liv
 there — only run it when that is what you want. It skips if the folder already exists.
 
 `screenshot.mjs` shoots Overview, Browse (grid and table), the model sheet, Downloads,
-Settings and Private inference. It seeds `downloads.json` with sample jobs (paused, failed,
+Settings, Private inference, the Guide and the first-run welcome. It seeds `downloads.json` with sample jobs (paused, failed,
 finished — nothing on disk), points `HF_HOME` at an empty dir so no personal token or
 account lands in a screenshot, and exits 1 on CSP errors, page errors, or an interactive
 element left inside a window drag region (Playwright clicks bypass drag regions, so this
@@ -33,6 +33,14 @@ with `HFGUI_USER_DATA_DIR` pointed at a `mkdtempSync` dir (pre-seed
 `settings.json` there with `{"customDir": "/tmp"}` so no native dialog opens). Any driver
 that downloads must click `destination-custom` and check the job's `jobDir` — LM Studio
 and exo are installed on this Mac and get auto-selected otherwise.
+
+**First-run welcome.** A profile with no `settings.json` opens on the welcome screen
+(`data-testid="onboarding"`), which covers the whole app. Any seeded `settings.json` counts
+as an existing install and skips it; seed `{"onboarded": false}` to show it, or flip it live
+with `window.hfgui.setSettings({ onboarded: false })` + `__hfguiTest.refreshSettings()`.
+Its destination radios are `onboarding-{kind}`; LM Studio and exo appear only when installed.
+To see hfgui as someone without them, launch with `HOME` set to an empty temp dir — neither
+app is detected, and `~/Models` resolves inside that dir.
 
 Gotchas:
 
@@ -50,7 +58,7 @@ Gotchas:
 - Reading a screenshot you have already read at the same path can serve a stale image.
   Write to a new filename, or confirm with pixels (`sips -z 1 1 -s format bmp`).
 - Test hooks on `window.__hfguiTest`: `openModel(id)`, `setView(view)` (views:
-  `overview`, `browse`, `downloads`, `private-inference`, `settings`), `getJobs()`,
+  `overview`, `browse`, `downloads`, `private-inference`, `guide`, `settings`), `getJobs()`,
   `getUi()`, `openRef(text)`, `beginDrag(model)` / `endDrag()` / `getDragModel()`,
   `dropModel(model, kind)`, `refreshSettings()`.
 - Useful selectors: `[data-testid="model-grid"] > button` (the grid's direct children must
@@ -58,7 +66,9 @@ Gotchas:
   `overview-trending`, `nav-{view}`, `[data-testid="search-input"]`,
   `[data-testid^="download-"]`, `destination-{kind}` (radio items), `omnibox-open`,
   `clipboard-chip`, `sheet-error` (+ `data-error-code`), `downloads-dock`,
-  `drop-target-{kind}`, `system-stats` (sidebar), `cancel-{jobId}` / `dock-stop-{jobId}` →
+  `drop-target-{kind}` (only for places that exist on this Mac, like `destination-*`),
+  `system-stats` (sidebar), `#guide-{section}` (Guide cards: `how`, `formats`, `sizes`,
+  `location`, `running`, `gated`, `space`), `cancel-{jobId}` / `dock-stop-{jobId}` →
   `cancel-confirm` (cancelling asks first once bytes have landed).
 - Copy that the drivers match on: `Completed` (a finished row's status badge — tabs,
   headings and summaries on Downloads say "finished" so the match stays meaningful),
@@ -67,7 +77,8 @@ Gotchas:
   testid may start with `download-`.
 - `scripts/e2e-mlx.mjs` asserts `locator('text=/Users/').first()` over the **whole page** —
   the model sheet's destination path must stay the only absolute path rendered as text,
-  and no other text anywhere may contain "Users".
+  and no other text anywhere may contain "Users". Show other paths with `displayPath()`
+  (`@/lib/utils`), which renders the home folder as `~`.
 - Don't wrap buttons a driver clicks right before Escape (`download-*`, `destination-*`,
   `omnibox-open`) in tooltips: an open tooltip takes the Escape. The sheet focuses its own
   panel on open for the same reason.

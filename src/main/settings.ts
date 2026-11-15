@@ -4,12 +4,14 @@ import { mkdir, rename, unlink, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { DEFAULT_SPEED_LIMIT, clampSpeedLimit } from '@shared/speedLimit'
-import type { Settings, TokenStatus } from '@shared/types'
+import type { DestinationKind, Settings, TokenStatus } from '@shared/types'
 
 const DEFAULTS: Settings = {
   lmstudioDir: null,
   exoDir: null,
   customDir: null,
+  preferredDestination: null,
+  onboarded: false,
   maxConcurrentJobs: 2,
   autoResume: false,
   theme: 'system',
@@ -31,7 +33,13 @@ function normalize(s: Settings): Settings {
     clipboardWatch: s.clipboardWatch !== false,
     speedLimitEnabled: s.speedLimitEnabled === true,
     speedLimitBytesPerSec: clampSpeedLimit(s.speedLimitBytesPerSec),
-    notifications: s.notifications !== false
+    notifications: s.notifications !== false,
+    preferredDestination: (['lmstudio', 'exo', 'custom'] as const).includes(
+      s.preferredDestination as DestinationKind
+    )
+      ? s.preferredDestination
+      : null,
+    onboarded: s.onboarded === true
   }
 }
 
@@ -62,7 +70,9 @@ export class SettingsStore {
   private loadSync(): Settings {
     try {
       const raw = JSON.parse(readFileSync(this.file, 'utf8'))
-      return normalize({ ...DEFAULTS, ...raw })
+      // A settings file without the flag predates the welcome screen: that
+      // install is already set up, so don't greet it as new.
+      return normalize({ ...DEFAULTS, onboarded: true, ...raw })
     } catch {
       return { ...DEFAULTS }
     }

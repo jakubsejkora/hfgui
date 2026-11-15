@@ -1,8 +1,7 @@
-import { defaultDestination } from '@shared/destinationRules'
 import { comfortableModelBytes } from '@shared/fit'
 import { formatBytes } from '@shared/format'
-import { useDestinations, useDiskSpace, useSystemInfo } from '@/lib/queries'
-import { cn } from '@/lib/utils'
+import { useDefaultDestination, useDiskSpace, useSystemInfo } from '@/lib/queries'
+import { cn, destinationHolding } from '@/lib/utils'
 import { Tip } from './Tip'
 
 /**
@@ -18,8 +17,7 @@ import { Tip } from './Tip'
  */
 export function SystemStatus() {
   const { data: system } = useSystemInfo()
-  const { data: destinations } = useDestinations()
-  const target = destinations ? defaultDestination('gguf', destinations) : null
+  const target = useDefaultDestination('gguf')
   const { data: disk } = useDiskSpace(target?.path)
 
   const used = disk && disk.totalBytes > 0 ? 1 - disk.freeBytes / disk.totalBytes : null
@@ -33,7 +31,7 @@ export function SystemStatus() {
       className="mx-2 flex flex-col gap-2.5 rounded-lg border border-sidebar-border bg-background/60 p-3 text-xs dark:bg-sidebar-accent/40"
     >
       {disk && target && used !== null && (
-        <Tip content={`Free space where ${target.label} downloads land`} side="right">
+        <Tip content={`Free space on the drive with ${destinationHolding(target)}`} side="right">
           <div className="flex flex-col gap-1.5">
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-medium">Storage</span>

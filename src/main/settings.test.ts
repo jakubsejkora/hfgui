@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -29,5 +29,25 @@ describe('SettingsStore', () => {
     expect(store.get().notifications).toBe(true)
     await store.set({ notifications: false })
     expect(new SettingsStore(dir).get().notifications).toBe(false)
+  })
+
+  it('greets a fresh install, but not one set up before the welcome screen existed', async () => {
+    const fresh = new SettingsStore(dir)
+    expect(fresh.get().onboarded).toBe(false)
+    // Changing a setting midway through the welcome doesn't finish it.
+    await fresh.set({ theme: 'dark' })
+    expect(new SettingsStore(dir).get().onboarded).toBe(false)
+
+    await writeFile(join(dir, 'settings.json'), JSON.stringify({ customDir: '/Volumes/AI' }))
+    expect(new SettingsStore(dir).get().onboarded).toBe(true)
+  })
+
+  it('remembers the default destination, and only a real one', async () => {
+    const store = new SettingsStore(dir)
+    expect(store.get().preferredDestination).toBeNull()
+    await store.set({ onboarded: true, preferredDestination: 'custom' })
+    expect(new SettingsStore(dir).get().preferredDestination).toBe('custom')
+    await store.set({ preferredDestination: 'ftp' as never })
+    expect(store.get().preferredDestination).toBeNull()
   })
 })
