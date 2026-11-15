@@ -273,6 +273,28 @@ describe('updates', () => {
     await mgr.shutdown()
   })
 
+  it('keeps one record of duplicate updates that already finished, and their folder', async () => {
+    // What the old behaviour left: four finished updates, each of which took
+    // over the folder in turn, all naming it; the old version points at the last.
+    const canonical = join(base, 'org', 'model')
+    const old = await seed(`${canonical}@1d4bf0f`, modelFiles(BEFORE), { supersededBy: 'job_upd_4' })
+    const dupes = await Promise.all(
+      [1, 2, 3, 4].map((n) =>
+        seed(canonical, modelFiles(NOW), {
+          jobId: `job_upd_${n}`,
+          revision: NEW,
+          createdAt: 10 + n,
+          update: { of: old.jobId, fromRevision: OLD, pendingMove: null }
+        })
+      )
+    )
+    const mgr = await start([old, ...dupes])
+    expect(mgr.list().filter((j) => j.update).map((j) => j.jobId)).toEqual(['job_upd_4'])
+    for (const [path, body] of Object.entries(NOW)) expect(await text(join(canonical, path))).toBe(body)
+    expect((await mgr.storageReport()).missing).toEqual([])
+    await mgr.shutdown()
+  })
+
   it('finishes moving in after a stop part-way through', async () => {
     // Stopped mid-way through moving the old files aside: one already moved.
     const canonical = join(base, 'org', 'model')

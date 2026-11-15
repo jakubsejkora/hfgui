@@ -126,6 +126,21 @@ export class DownloadManager {
         this.jobs.delete(extra.jobId)
       }
     }
+    // The same, already finished: each took over the model's folder in turn,
+    // so all their records name it. Keep the one the old version points to;
+    // the rest only leave the list — the folder they name is the kept one's.
+    const finishedOf = new Map<string, DownloadJob[]>()
+    for (const job of this.jobs.values()) {
+      if (!job.update || job.update.pendingMove || job.state !== 'completed') continue
+      const key = `${job.update.of}\0${job.jobDir}\0${job.revision}`
+      finishedOf.set(key, [...(finishedOf.get(key) ?? []), job])
+    }
+    for (const dupes of finishedOf.values()) {
+      if (dupes.length < 2) continue
+      const pointedTo = this.jobs.get(dupes[0].update!.of)?.supersededBy
+      const keep = dupes.find((j) => j.jobId === pointedTo) ?? dupes.sort((a, b) => b.createdAt - a.createdAt)[0]
+      for (const extra of dupes) if (extra !== keep) this.jobs.delete(extra.jobId)
+    }
     // An update that finished but hadn't moved into its model's folder yet.
     for (const job of [...this.jobs.values()]) {
       if (job.state === 'completed' && job.update?.pendingMove) await this.finishUpdate(job)
