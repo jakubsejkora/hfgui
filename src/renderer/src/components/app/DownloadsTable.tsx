@@ -136,6 +136,7 @@ function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boole
   const { progress, stalled } = useLiveProgress(job)
   const update = useUpdates().data?.[job.jobId]
   const updatingTo = useUpdatingTo(job.jobId)
+  const openUpdate = useUpdateDialog((s) => s.open)
   if (missing) {
     return (
       <div className="flex min-w-0 flex-col gap-1.5">
@@ -185,9 +186,20 @@ function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boole
         {job.completedAt ? `Downloaded ${shortDate(job.completedAt)}, ` : ''}kept beside the newer version
       </span>
     ) : update?.status === 'available' ? (
-      <span className="whitespace-normal text-foreground">
-        Update available · {describeChanges(update.changed)}
-        {update.fetchBytes > 0 && <> · {formatBytes(update.fetchBytes)} to download</>}
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="text-foreground">
+          Update available · {describeChanges(update.changed)}
+          {update.fetchBytes > 0 && <> · {formatBytes(update.fetchBytes)}</>}
+        </span>
+        <Button
+          variant="outline"
+          size="xs"
+          className="-my-0.5"
+          onClick={() => openUpdate(job)}
+          data-testid={`update-${job.jobId}`}
+        >
+          <RefreshCw /> Update
+        </Button>
       </span>
     ) : job.destination.kind === 'exo' ? (
       <ExoLine job={job} reg={job.exoRegistration} />
@@ -234,7 +246,7 @@ function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boole
         <div
           className={cn(
             'text-xs text-muted-foreground tabular-nums',
-            job.state === 'error' ? 'leading-relaxed' : 'truncate'
+            job.state === 'error' || update?.status === 'available' ? 'leading-relaxed' : 'truncate'
           )}
         >
           {meta}
@@ -247,18 +259,10 @@ function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boole
 function RowActions({ job, missing }: { job: DownloadJobSnapshot; missing: boolean }) {
   const openModel = useUiStore((s) => s.openModel)
   const openTokenDialog = useUiStore((s) => s.setTokenDialogOpen)
-  const update = useUpdates().data?.[job.jobId]
-  const updatingTo = useUpdatingTo(job.jobId)
-  const openUpdate = useUpdateDialog((s) => s.open)
   const { state } = job
 
   return (
     <div className="flex items-center justify-end gap-1">
-      {state === 'completed' && !missing && !updatingTo && update?.status === 'available' && (
-        <Button size="sm" variant="outline" onClick={() => openUpdate(job)} data-testid={`update-${job.jobId}`}>
-          <RefreshCw /> Update
-        </Button>
-      )}
       {state === 'completed' && missing && (
         <Button size="sm" variant="outline" onClick={() => void jobActions.redownload(job)}>
           <ArrowDownToLine /> Download again
@@ -403,6 +407,9 @@ export function DownloadsTable({ jobs }: { jobs: DownloadJobSnapshot[] }) {
             <TableHead className="pl-4">Model</TableHead>
             <TableHead className="w-60 @4xl:w-72">Status</TableHead>
             <TableHead className="hidden w-24 @5xl:table-cell">Added</TableHead>
+            {/* table-fixed: this width is the column's, so it must hold the widest set of
+                inline actions — "Open in LM Studio" + delete + more. Anything else goes in
+                the status line (Update) or the ⋯ menu, or it spills over the status. */}
             <TableHead className="w-64 pr-4 text-right">
               <span className="sr-only">Actions</span>
             </TableHead>
