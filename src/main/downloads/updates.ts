@@ -1,7 +1,7 @@
 import { createHash } from 'crypto'
-import { constants, existsSync } from 'fs'
-import { copyFile, link, mkdir, readFile, rm, stat, statfs } from 'fs/promises'
-import { dirname } from 'path'
+import { existsSync } from 'fs'
+import { copyFile, link, mkdir, open, readFile, readdir, rename, rm, rmdir, stat } from 'fs/promises'
+import { dirname, join } from 'path'
 import type { ModelFormat } from '@shared/types'
 
 /*
@@ -12,6 +12,7 @@ import type { ModelFormat } from '@shared/types'
  */
 
 export const HUB = 'https://huggingface.co'
+const HUB_TIMEOUT_MS = 30_000
 
 /** A file in a repo at one revision, as the Hub's tree API lists it. */
 export interface HubFile {
@@ -39,9 +40,18 @@ export interface HubOptions {
 }
 
 async function getJson(url: string, opts: HubOptions): Promise<{ body: unknown; next: string | null }> {
-  const res = await (opts.fetch ?? fetch)(url, {
-    headers: opts.token ? { Authorization: `Bearer ${opts.token}` } : {}
-  })
+  let res: Response
+  try {
+    res = await (opts.fetch ?? fetch)(url, {
+      headers: opts.token ? { Authorization: `Bearer ${opts.token}` } : {},
+      // A stalled Hub must not leave "Starting…" spinning for ever.
+      signal: AbortSignal.timeout(HUB_TIMEOUT_MS)
+    })
+  } catch (e) {
+    throw new Error(
+      (e as Error).name === 'TimeoutError' ? 'Hugging Face didn’t answer in time — try again in a moment' : (e as Error).message
+    )
+  }
   if (res.status === 404) throw new HubMissingError('This model is no longer on Hugging Face')
   if (res.status === 401 || res.status === 403) throw new Error('Needs a Hugging Face token')
   if (!res.ok) throw new Error(`Hugging Face answered HTTP ${res.status}`)
@@ -189,40 +199,26 @@ export function planUpdate(
   }
 }
 
-/**
- * Whether files in `dir` can be cloned: APFS, where a copy shares its blocks
- * until either side changes. Every APFS volume reports the startup disk's
- * filesystem type. Asked first because Node can't force a clone on macOS
- * (ENOSYS) — and the fallback, a full copy of a 360 GB model, is no option.
- */
-export async function canClone(dir: string): Promise<boolean> {
-  if (process.platform !== 'darwin') return false
-  let probe = dir
-  while (!existsSync(probe) && dirname(probe) !== probe) probe = dirname(probe)
-  try {
-    const [here, startup] = await Promise.all([statfs(probe), statfs('/')])
-    return here.type === startup.type
-  } catch {
-    return false
-  }
-}
+/** Above this, a file another version already has is hard-linked rather than copied. */
+export const LINK_MIN_BYTES = 64 * 1024 * 1024
 
 /**
- * Make `dst` a copy of `src` that takes no extra space: an APFS clone (copy on
- * write, so the two never affect each other), or a hard link where there are
- * no clones. False when neither works; the caller downloads the file instead.
+ * Make `dst` a copy of `src` that costs no download. Large files (the weights)
+ * become hard links: instant, no extra space, and nobody edits weights in
+ * place. Small ones (configs, templates) are plain copies, so editing one
+ * version's never changes the other's. False when a link can't be made (a
+ * drive without hard links); the caller downloads the file instead.
+ *
+ * Not APFS clones: Node's COPYFILE_FICLONE quietly falls back to a byte copy
+ * on macOS, and the first version of this copied a 510 GB model to update
+ * 150 KB of it.
  */
-export async function shareFile(src: string, dst: string, clone: boolean): Promise<boolean> {
+export async function shareFile(src: string, dst: string): Promise<boolean> {
   await mkdir(dirname(dst), { recursive: true })
   await rm(dst, { force: true })
-  // A clone only happens within one volume; across volumes it would be a full copy.
-  if (clone && (await stat(src)).dev === (await stat(dirname(dst))).dev) {
-    try {
-      await copyFile(src, dst, constants.COPYFILE_FICLONE)
-      return true
-    } catch {
-      /* fall through */
-    }
+  if ((await stat(src)).size <= LINK_MIN_BYTES) {
+    await copyFile(src, dst)
+    return true
   }
   try {
     await link(src, dst)
@@ -230,6 +226,67 @@ export async function shareFile(src: string, dst: string, clone: boolean): Promi
   } catch {
     return false
   }
+}
+
+/**
+ * Turn `copy` into a hard link to `original` when they are two copies of the
+ * same file on one drive, freeing the copy's space. Atomic: a link is made
+ * beside the copy and renamed over it. True if it was a separate copy.
+ */
+export async function relinkCopy(original: string, copy: string): Promise<boolean> {
+  const [a, b] = await Promise.all([stat(original), stat(copy)])
+  if (a.ino === b.ino || a.dev !== b.dev || a.size !== b.size) return false
+  // Records say they are the same file; check their first and last bytes too.
+  if (!(await sameEnds(original, copy, a.size))) return false
+  const tmp = `${copy}.hfgui-relink`
+  await rm(tmp, { force: true })
+  await link(original, tmp)
+  await rename(tmp, copy)
+  return true
+}
+
+const END_BYTES = 64 * 1024
+
+/** The first and last 64 KB of two files of `size` bytes are identical. */
+async function sameEnds(a: string, b: string, size: number): Promise<boolean> {
+  const read = async (path: string): Promise<Buffer> => {
+    const fh = await open(path, 'r')
+    try {
+      const n = Math.min(END_BYTES, size)
+      const head = Buffer.alloc(n)
+      const tail = Buffer.alloc(n)
+      await fh.read(head, 0, n, 0)
+      await fh.read(tail, 0, n, Math.max(0, size - n))
+      return Buffer.concat([head, tail])
+    } finally {
+      await fh.close()
+    }
+  }
+  const [x, y] = await Promise.all([read(a), read(b)])
+  return x.equals(y)
+}
+
+/**
+ * Remove `dir` when nothing but empty folders (and Finder's .DS_Store) is left
+ * in it — what an update's staging folder is once its files have moved in.
+ * Never deletes a file. True if it is gone.
+ */
+export async function removeEmptyTree(dir: string): Promise<boolean> {
+  let entries
+  try {
+    entries = await readdir(dir, { withFileTypes: true })
+  } catch {
+    return false
+  }
+  let empty = true
+  for (const e of entries) {
+    if (e.isDirectory()) empty = (await removeEmptyTree(join(dir, e.name))) && empty
+    else if (e.name !== '.DS_Store') empty = false
+  }
+  if (!empty) return false
+  await rm(join(dir, '.DS_Store'), { force: true })
+  await rmdir(dir).catch(() => {})
+  return !existsSync(dir)
 }
 
 /** `<dir>@<short revision>`, or with -2, -3… if that name is taken. */

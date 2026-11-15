@@ -18,6 +18,7 @@ vi.mock('./resolve', async (importOriginal) => {
 })
 
 import { DownloadManager, SMALL_JOB_BYTES, pickJobsToStart } from './manager'
+import { LINK_MIN_BYTES } from './updates'
 
 const OLD = '1d4bf0f'.padEnd(40, '0')
 const NEW = '3756181'.padEnd(40, '0')
@@ -25,6 +26,8 @@ const WEIGHTS = Buffer.alloc(256 * 1024, 7)
 const Q8 = Buffer.alloc(64 * 1024, 8)
 const Q4_OLD = Buffer.alloc(32 * 1024, 4)
 const Q4_NEW = Buffer.alloc(33 * 1024, 5) // re-quantized
+// Big enough to be shared by hard link rather than copied.
+const BIG_WEIGHTS = Buffer.alloc(LINK_MIN_BYTES + 1024, 3)
 const sha256 = (b: Buffer | string): string => createHash('sha256').update(b).digest('hex')
 const gitOid = (s: string): string => createHash('sha1').update(`blob ${Buffer.byteLength(s)}\0`).update(s).digest('hex')
 
@@ -45,7 +48,20 @@ beforeAll(async () => {
   http = createServer((req, res) => {
     const url = new URL(req.url!, 'http://x')
     const json = (body: unknown): void => void res.end(JSON.stringify(body))
-    if (url.pathname === '/api/models/org/model' || url.pathname === '/api/models/org/model-GGUF') {
+    if (url.pathname === `/api/models/org/big-model/tree/${NEW}`) {
+      return json([
+        { type: 'file', path: 'model.safetensors', size: BIG_WEIGHTS.length, oid: 'ptr', lfs: { oid: sha256(BIG_WEIGHTS) } },
+        { type: 'file', path: 'chat_template.jinja', size: Buffer.byteLength(NOW['chat_template.jinja']), oid: gitOid(NOW['chat_template.jinja']) }
+      ])
+    }
+    // org/resized: the weights were re-released at exactly the same size.
+    if (url.pathname === `/api/models/org/resized/tree/${OLD}`) {
+      return json([{ type: 'file', path: 'model.safetensors', size: WEIGHTS.length, oid: 'p', lfs: { oid: sha256(WEIGHTS) } }])
+    }
+    if (url.pathname === `/api/models/org/resized/tree/${NEW}`) {
+      return json([{ type: 'file', path: 'model.safetensors', size: WEIGHTS.length, oid: 'p2', lfs: { oid: 'e'.repeat(64) } }])
+    }
+    if (['/api/models/org/model', '/api/models/org/model-GGUF', '/api/models/org/big-model', '/api/models/org/resized'].includes(url.pathname)) {
       return json({ sha: NEW, lastModified: '2026-11-07T10:00:00.000Z' })
     }
     if (url.pathname === `/api/models/org/model/tree/${NEW}`) {
@@ -292,6 +308,69 @@ describe('updates', () => {
     expect(mgr.list().filter((j) => j.update).map((j) => j.jobId)).toEqual(['job_upd_4'])
     for (const [path, body] of Object.entries(NOW)) expect(await text(join(canonical, path))).toBe(body)
     expect((await mgr.storageReport()).missing).toEqual([])
+    await mgr.shutdown()
+  })
+
+  for (const keepOld of [true, false]) {
+    it(`shares large unchanged files instead of copying them (${keepOld ? 'keep both' : 'replace'})`, async () => {
+      const canonical = join(base, 'org', 'big-model')
+      const old = await seed(canonical, { 'model.safetensors': BIG_WEIGHTS, 'chat_template.jinja': BEFORE['chat_template.jinja'] }, { repoId: 'org/big-model' })
+      const originalIno = (await stat(join(canonical, 'model.safetensors'))).ino
+      const mgr = await start([old])
+      expect(await mgr.update(old.jobId, { keepOld })).toEqual({ ok: true })
+      await until(done(mgr))
+
+      expect(fetched).toEqual(['chat_template.jinja'])
+      expect(await text(join(canonical, 'chat_template.jinja'))).toBe(NOW['chat_template.jinja'])
+      // Still the very file that was downloaded the first time: no byte copy was made.
+      expect((await stat(join(canonical, 'model.safetensors'))).ino).toBe(originalIno)
+      if (keepOld) expect((await stat(join(`${canonical}@1d4bf0f`, 'model.safetensors'))).ino).toBe(originalIno)
+      else expect(await exists(`${canonical}@1d4bf0f`)).toBe(false)
+      expect(await exists(`${canonical}@3756181`)).toBe(false) // no link left behind in staging
+      await mgr.shutdown()
+    })
+  }
+
+  it('turns full copies left by earlier updates back into shared files', async () => {
+    const canonical = join(base, 'org', 'big-model')
+    const old = await seed(`${canonical}@1d4bf0f`, { 'model.safetensors': BIG_WEIGHTS }, { repoId: 'org/big-model', supersededBy: 'job_new' })
+    const fresh = await seed(canonical, { 'model.safetensors': BIG_WEIGHTS }, {
+      jobId: 'job_new',
+      repoId: 'org/big-model',
+      revision: NEW,
+      update: { of: old.jobId, fromRevision: OLD, pendingMove: null }
+    })
+    const ino = (p: string): Promise<number> => stat(join(p, 'model.safetensors')).then((s) => s.ino)
+    expect(await ino(canonical)).not.toBe(await ino(`${canonical}@1d4bf0f`))
+    const mgr = await start([old, fresh])
+    expect(await ino(canonical)).toBe(await ino(`${canonical}@1d4bf0f`))
+    // .equals, not toEqual: deep-equality on 64 MB of bytes exhausts the test worker's heap.
+    expect((await readFile(join(canonical, 'model.safetensors'))).equals(BIG_WEIGHTS)).toBe(true)
+    await mgr.shutdown()
+  })
+
+  it('spots a re-released file of the same size, even without a checksum on record', async () => {
+    const old = await seed(join(base, 'org', 'resized'), { 'model.safetensors': WEIGHTS }, { repoId: 'org/resized' })
+    old.files[0].sha256 = null // downloaded before sha256 was kept: only its size is known
+    const mgr = await start([old])
+    // Sizes match; the old revision's checksum on the Hub says the file changed.
+    expect((await mgr.checkUpdates())[old.jobId]).toMatchObject({ status: 'available', changed: ['model.safetensors'] })
+    await mgr.shutdown()
+  })
+
+  it('relinks copies of a download that never recorded checksums', async () => {
+    const canonical = join(base, 'org', 'big-model')
+    const old = await seed(`${canonical}@1d4bf0f`, { 'model.safetensors': BIG_WEIGHTS }, { repoId: 'org/big-model', supersededBy: 'job_new' })
+    old.files[0].sha256 = null // downloaded before sha256 was kept
+    const fresh = await seed(canonical, { 'model.safetensors': BIG_WEIGHTS }, {
+      jobId: 'job_new',
+      repoId: 'org/big-model',
+      revision: NEW,
+      update: { of: old.jobId, fromRevision: OLD, pendingMove: null }
+    })
+    const mgr = await start([old, fresh])
+    const ino = (p: string): Promise<number> => stat(join(p, 'model.safetensors')).then((s) => s.ino)
+    expect(await ino(canonical)).toBe(await ino(`${canonical}@1d4bf0f`))
     await mgr.shutdown()
   })
 

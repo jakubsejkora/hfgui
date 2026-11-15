@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { canClone, gitBlobOid, isCosmetic, planUpdate, shareFile, versionedName, type LatestVersion } from './updates'
+import { LINK_MIN_BYTES, gitBlobOid, isCosmetic, planUpdate, relinkCopy, removeEmptyTree, shareFile, versionedName, type LatestVersion } from './updates'
 
 let dir: string
 beforeEach(async () => {
@@ -115,17 +115,53 @@ describe('planUpdate', () => {
 })
 
 describe('shareFile', () => {
-  it('makes a copy that takes no space and stays independent', async () => {
-    await writeFile(join(dir, 'src.bin'), 'weights')
-    const clone = await canClone(dir)
-    expect(clone).toBe(process.platform === 'darwin') // macOS temp dirs are on APFS
-    expect(await shareFile(join(dir, 'src.bin'), join(dir, 'v2', 'dst.bin'), clone)).toBe(true)
-    expect(await readFile(join(dir, 'v2', 'dst.bin'), 'utf8')).toBe('weights')
-    if (process.platform === 'darwin') {
-      // APFS clone: copy on write, so changing one never changes the other.
-      await writeFile(join(dir, 'v2', 'dst.bin'), 'edited')
-      expect(await readFile(join(dir, 'src.bin'), 'utf8')).toBe('weights')
-    }
+  it('copies a small file, so editing one version never changes the other', async () => {
+    await writeFile(join(dir, 'config.json'), '{"a":1}')
+    expect(await shareFile(join(dir, 'config.json'), join(dir, 'v2', 'config.json'))).toBe(true)
+    await writeFile(join(dir, 'v2', 'config.json'), '{"a":2}')
+    expect(await readFile(join(dir, 'config.json'), 'utf8')).toBe('{"a":1}')
+  })
+
+  it('hard-links the weights: instant, and no second copy on disk', async () => {
+    const weights = join(dir, 'model.safetensors')
+    await writeFile(weights, Buffer.alloc(LINK_MIN_BYTES + 1, 7))
+    const started = Date.now()
+    expect(await shareFile(weights, join(dir, 'v2', 'model.safetensors'))).toBe(true)
+    expect(Date.now() - started).toBeLessThan(500)
+    expect((await stat(join(dir, 'v2', 'model.safetensors'))).ino).toBe((await stat(weights)).ino)
+  })
+})
+
+describe('relinkCopy', () => {
+  it('turns a separate copy of the same file into a link, keeping its content', async () => {
+    const original = join(dir, 'a.bin')
+    const copy = join(dir, 'b.bin')
+    await writeFile(original, 'same bytes')
+    await writeFile(copy, 'same bytes')
+    expect(await relinkCopy(original, copy)).toBe(true)
+    expect((await stat(copy)).ino).toBe((await stat(original)).ino)
+    expect(await readFile(copy, 'utf8')).toBe('same bytes')
+    expect(await relinkCopy(original, copy)).toBe(false) // already shared
+  })
+
+  it('leaves two files alone when their bytes differ, whatever the records say', async () => {
+    await writeFile(join(dir, 'a.bin'), 'same size, A')
+    await writeFile(join(dir, 'b.bin'), 'same size, B')
+    expect(await relinkCopy(join(dir, 'a.bin'), join(dir, 'b.bin'))).toBe(false)
+    expect(await readFile(join(dir, 'b.bin'), 'utf8')).toBe('same size, B')
+  })
+})
+
+describe('removeEmptyTree', () => {
+  it('removes a folder of empty folders, and nothing that holds a file', async () => {
+    await mkdir(join(dir, 'staging', 'encoding', 'deep'), { recursive: true })
+    await mkdir(join(dir, 'staging', 'assets'), { recursive: true })
+    await writeFile(join(dir, 'staging', '.DS_Store'), '')
+    expect(await removeEmptyTree(join(dir, 'staging'))).toBe(true)
+    await mkdir(join(dir, 'kept', 'inner'), { recursive: true })
+    await writeFile(join(dir, 'kept', 'inner', 'model.py'), 'x')
+    expect(await removeEmptyTree(join(dir, 'kept'))).toBe(false)
+    expect(await readFile(join(dir, 'kept', 'inner', 'model.py'), 'utf8')).toBe('x')
   })
 })
 

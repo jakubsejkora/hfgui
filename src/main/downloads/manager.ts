@@ -23,14 +23,17 @@ import { Persistence } from './persistence'
 import { isInside, pruneEmptyDirs, sizeOf } from './storage'
 import {
   HubMissingError,
-  canClone,
+  LINK_MIN_BYTES,
   fetchFiles,
   fetchLatest,
   fetchRevision,
   gitBlobOid,
   planUpdate,
+  relinkCopy,
+  removeEmptyTree,
   shareFile,
   versionedName,
+  type DownloadedVersion,
   type HubOptions,
   type LatestVersion,
   type Planned
@@ -145,6 +148,7 @@ export class DownloadManager {
     for (const job of [...this.jobs.values()]) {
       if (job.state === 'completed' && job.update?.pendingMove) await this.finishUpdate(job)
     }
+    await this.relinkVersions()
     // First run with the ledger: adopt the data of downloads still in the list.
     if (!ledgerExisted) {
       for (const job of this.jobs.values()) {
@@ -525,6 +529,21 @@ export class DownloadManager {
   /** Compare a download with the latest version, file by file. */
   private async planFor(job: DownloadJob, latest: LatestVersion): Promise<Planned> {
     const now = new Map(latest.files.map((f) => [f.path, f]))
+    // Downloads from before sha256 was recorded: take the checksums of the
+    // revision they came from, so a re-released file of the same size isn't
+    // mistaken for an unchanged one. Sizes are the fallback if it's gone.
+    let mine: DownloadedVersion = job
+    if (job.files.some((f) => !f.sha256 && now.get(f.path)?.lfs)) {
+      try {
+        const then = new Map((await fetchFiles(job.repoId, job.revision, this.hubOptions())).map((f) => [f.path, f]))
+        mine = {
+          format: job.format,
+          files: job.files.map((f) => ({ ...f, sha256: f.sha256 ?? then.get(f.path)?.lfs?.oid ?? null }))
+        }
+      } catch {
+        /* the old revision is gone: compare sizes */
+      }
+    }
     // Small files have no sha256 on record; git's id for their content does the job.
     const oids = new Map<string, string | null>()
     for (const f of job.files) {
@@ -538,7 +557,7 @@ export class DownloadManager {
       }
       oids.set(f.path, await gitBlobOid(path, next.size))
     }
-    return planUpdate(job, latest, oids)
+    return planUpdate(mine, latest, oids)
   }
 
   /**
@@ -583,11 +602,10 @@ export class DownloadManager {
 
     const { plan } = planned
     const staging = versionedName(old.jobDir, plan.revision, existsSync)
-    const clone = await canClone(old.jobDir)
     const shared = new Set<string>()
     for (const path of plan.same) {
       try {
-        if (await shareFile(old.finalPathFor(path), safeJoin(staging, path), clone)) shared.add(path)
+        if (await shareFile(old.finalPathFor(path), safeJoin(staging, path))) shared.add(path)
       } catch {
         /* downloaded instead */
       }
@@ -655,8 +673,8 @@ export class DownloadManager {
           const from = safeJoin(target, f.path)
           const to = safeJoin(aside, f.path)
           if (existsSync(to) || !existsSync(from)) continue
-          // Another download in this folder uses it too: copy, don't take it.
-          if (shared.has(from)) await shareFile(from, to, await canClone(target))
+          // Another download in this folder uses it too: share it, don't take it.
+          if (shared.has(from)) await shareFile(from, to)
           else await renameInto(from, to)
         }
         old.jobDir = aside
@@ -668,9 +686,14 @@ export class DownloadManager {
         await saveStage('place')
         for (const f of job.files) {
           const from = safeJoin(job.jobDir, f.path)
-          if (existsSync(from)) await renameInto(from, safeJoin(target, f.path))
+          if (!existsSync(from)) continue
+          await renameInto(from, safeJoin(target, f.path))
+          // Renaming a hard link onto another link of the same file is a no-op
+          // that leaves the source: replacing, an unchanged file is exactly that.
+          if (existsSync(from)) await unlink(from)
         }
-        await pruneEmptyDirs(job.jobDir, job.destination.baseDir)
+        // Its files moved in; what is left of the staging folder is empty folders.
+        await removeEmptyTree(job.jobDir)
         job.jobDir = target
       }
 
@@ -704,6 +727,39 @@ export class DownloadManager {
     this.emit({ type: 'state', jobId: job.jobId, snapshot: job.snapshot() })
     this.emit({ type: 'updates' })
     await this.persistence.flush()
+  }
+
+  /**
+   * A kept older version and its update share the files that didn't change.
+   * Updates made before sharing worked hold full byte copies instead (Node's
+   * "clone" copied); make each copy a hard link to the original again, freeing
+   * its space. Only files both records say are identical (same sha256 and
+   * size), large ones, on one drive; already-shared files are left alone.
+   */
+  private async relinkVersions(): Promise<void> {
+    for (const job of this.jobs.values()) {
+      // Staging folders earlier versions left behind as trees of empty folders.
+      if (job.state !== 'completed' || !job.update || job.update.pendingMove) continue
+      const staging = `${job.jobDir}@${job.revision.slice(0, 7)}`
+      for (const suffix of ['', '-2', '-3', '-4', '-5']) await removeEmptyTree(staging + suffix)
+    }
+    for (const old of this.jobs.values()) {
+      const fresh = old.supersededBy ? this.jobs.get(old.supersededBy) : undefined
+      if (!fresh || fresh.state !== 'completed' || fresh.update?.pendingMove) continue
+      const before = new Map(old.files.map((f) => [f.path, f]))
+      for (const f of fresh.files) {
+        const was = before.get(f.path)
+        // Same checksum on record — or none on the old record, from before sha256
+        // was kept: then the update shared it by size, so the new file is a copy.
+        const same = was && (was.sha256 ? was.sha256 === f.sha256 : true)
+        if (!was || !same || was.size !== f.size || f.size <= LINK_MIN_BYTES) continue
+        try {
+          await relinkCopy(old.finalPathFor(f.path), fresh.finalPathFor(f.path))
+        } catch {
+          /* missing or moved: leave it */
+        }
+      }
+    }
   }
 
   async shutdown(): Promise<void> {
