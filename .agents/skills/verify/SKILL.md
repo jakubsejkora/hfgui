@@ -44,9 +44,13 @@ app is detected, and `~/Models` resolves inside that dir.
 
 **Model updates.** Automatic update checks don't run under a driver (`HFGUI_USER_DATA_DIR`
 set); call `window.hfgui.checkForUpdates()` (results by job id, also `getUpdates()`), or click
-**Check for updates** on Downloads. A row with a newer version gets `update-{jobId}`. An
-update builds in `<jobDir>@<new rev7>`, then takes over `jobDir` and moves the old version to
-`<jobDir>@<old rev7>`. To test without the real Hub, rewrite main's fetch to a local server
+**Check for updates** on Downloads. A row with a newer version gets `update-{jobId}`, which
+opens a dialog: `update-replace` / `update-keep` (radios), `update-confirm`. An update builds
+in `<jobDir>@<new rev7>`, then moves into `jobDir` file by file; kept, the old version's
+files move to `<jobDir>@<old rev7>`. Downloads with under 256 MB left skip the slot limit,
+so a test update runs even while big downloads hold every slot. Never run a driver on a copy
+of the real `downloads.json` from here on: launch-time cleanup (duplicate updates, unfinished
+moves) acts on the folders it names. To test without the real Hub, rewrite main's fetch to a local server
 (`app.evaluate` replacing `https://huggingface.co/`) that answers `/api/models/{repo}`
 (`{sha}`), `/api/models/{repo}/tree/{sha}` (files with `oid`, and `lfs.oid` for big ones)
 and `/{repo}/resolve/{sha}/{path}`; see `.context/verify-updates.mjs` if it's still around.
