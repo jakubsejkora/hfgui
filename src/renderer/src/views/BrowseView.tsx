@@ -1,16 +1,35 @@
-import { ArrowUpDown, SearchX } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowUpDown, LayoutGrid, List, RotateCcw, SearchX, WifiOff } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { parseModelRef } from '@shared/modelRef'
-import { useModelSearch } from '@/lib/queries'
 import type { FormatFilter, SortKey } from '@/lib/hfApi'
+import { usePrefs, type BrowseLayout } from '@/lib/prefsStore'
+import { useBrowseQuery } from '@/lib/queries'
+import { useScrollRoot } from '@/lib/scrollRoot'
 import { useUiStore } from '@/lib/uiStore'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Select } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ModelCard } from '@/components/app/ModelCard'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle
+} from '@/components/ui/empty'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { ModelCard, ModelCardSkeleton } from '@/components/app/ModelCard'
+import { ModelTable } from '@/components/app/ModelTable'
+import { Page, PageHeader } from '@/components/app/Page'
 
-const SORT_OPTIONS = [
+const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: 'trendingScore', label: 'Trending' },
   { value: 'downloads', label: 'Most downloaded' },
   { value: 'likes', label: 'Most liked' },
@@ -26,34 +45,20 @@ const TASK_OPTIONS = [
   { value: 'feature-extraction', label: 'Embeddings' }
 ]
 
-const FORMAT_CHIPS: Array<{ value: FormatFilter; label: string }> = [
-  { value: 'gguf', label: 'GGUF' },
-  { value: 'mlx', label: 'MLX' },
-  { value: null, label: 'All' }
-]
+const formatValue = (f: FormatFilter): string => f ?? 'all'
+const formatFromValue = (v: string): FormatFilter => (v === 'gguf' || v === 'mlx' ? v : null)
 
-/** An empty sleeve — the app's own visual language doing the talking. */
-function EmptySleeve({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-4">
-      <div className="sleeve h-[104px] w-[180px] p-2">
-        <div className="border-border-strong bezel grain flex h-full w-full items-center justify-center border border-dashed">
-          <SearchX className="text-faint h-6 w-6" />
-        </div>
-      </div>
-      {children}
-    </div>
-  )
-}
+/** Where Browse was scrolled to, kept across visits to other pages this session. */
+let savedScrollTop = 0
 
 export function BrowseView() {
   const openModel = useUiStore((s) => s.openModel)
   const search = useUiStore((s) => s.search)
-  const [debounced, setDebounced] = useState(search)
-  const [sort, setSort] = useState<SortKey>('trendingScore')
-  const [format, setFormat] = useState<FormatFilter>('gguf')
-  const [task, setTask] = useState('all')
+  const setSearch = useUiStore((s) => s.setSearch)
+  const { format, task, sort, layout, set: setPrefs } = usePrefs()
+  const scrollRoot = useScrollRoot()
 
+  const [debounced, setDebounced] = useState(search)
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search), 300)
     return () => clearTimeout(t)
@@ -62,16 +67,14 @@ export function BrowseView() {
   // A pasted URL is a jump, not a query — feeding it to the Hub's `search=`
   // param would guarantee an empty grid behind the omnibox's Open button.
   const pastedUrl = useMemo(() => parseModelRef(debounced)?.fromUrl === true, [debounced])
-
-  const query = useModelSearch({
-    search: pastedUrl ? '' : debounced,
-    sort,
-    format,
-    pipelineTag: task === 'all' ? null : task
-  })
-
+  const query = useBrowseQuery(pastedUrl ? '' : debounced)
   const models = query.data?.pages.flatMap((p) => p.models) ?? []
+  // Results from the previous filter stay up while the new ones load; say so.
+  const stale = query.isPlaceholderData
 
+  // Infinite scroll. The observer must be rooted at the scrolling element: with
+  // the default (viewport) root, the overflow container clips the sentinel and
+  // the 600 px prefetch margin never applied.
   const sentinelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = sentinelRef.current
@@ -82,90 +85,175 @@ export function BrowseView() {
           void query.fetchNextPage()
         }
       },
-      { rootMargin: '600px' }
+      { root: scrollRoot?.current ?? null, rootMargin: '600px' }
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [query.hasNextPage, query.isFetchingNextPage, query.fetchNextPage, models.length])
+  }, [query.hasNextPage, query.isFetchingNextPage, query.fetchNextPage, models.length, scrollRoot])
+
+  // Come back to where you were after visiting a model's page or Downloads.
+  const restored = useRef(false)
+  useLayoutEffect(() => {
+    const root = scrollRoot?.current
+    if (!root || restored.current || models.length === 0) return
+    restored.current = true
+    root.scrollTop = savedScrollTop
+  }, [models.length, scrollRoot])
+  useEffect(() => {
+    const root = scrollRoot?.current
+    return () => {
+      if (root) savedScrollTop = root.scrollTop
+    }
+  }, [scrollRoot])
+
+  const clearFilters = (): void => {
+    setSearch('')
+    setPrefs({ format: null, task: 'all' })
+  }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 px-6 pt-2 pb-4">
-        <div className="slot flex items-center gap-0.5 rounded-full p-1">
-          {FORMAT_CHIPS.map((chip) => (
-            <button
-              key={chip.label}
-              onClick={() => setFormat(chip.value)}
-              className={cn(
-                'h-7 cursor-pointer rounded-full px-3.5 text-xs font-medium transition-colors',
-                format === chip.value
-                  ? 'bg-accent text-accent-fg shadow-accent/20 shadow-md'
-                  : 'text-muted hover:text-text'
-              )}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
-        <Select
-          value={task}
-          onValueChange={setTask}
-          options={TASK_OPTIONS}
-          className="h-9 w-44 rounded-full text-xs"
-          ariaLabel="Task"
-        />
-        <Select
-          value={sort}
-          onValueChange={(v) => setSort(v as SortKey)}
-          options={SORT_OPTIONS}
-          icon={<ArrowUpDown className="text-faint h-3.5 w-3.5" />}
-          className="ml-auto h-9 w-48 rounded-full text-xs"
-          ariaLabel="Sort by"
-        />
+    <Page className="max-w-[1600px] gap-4">
+      <PageHeader
+        title="Browse"
+        description={
+          debounced && !pastedUrl
+            ? `Results for “${debounced}” on the Hugging Face Hub`
+            : 'Models on the Hugging Face Hub, ready for LM Studio and exo.'
+        }
+      />
+
+      {/* Sticky so filters stay in reach while scrolling a long result list. */}
+      <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center gap-2 bg-background/95 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          value={formatValue(format)}
+          onValueChange={(v) => v && setPrefs({ format: formatFromValue(v) })}
+          aria-label="Format"
+        >
+          <ToggleGroupItem value="gguf" className="px-3">
+            GGUF
+          </ToggleGroupItem>
+          <ToggleGroupItem value="mlx" className="px-3">
+            MLX
+          </ToggleGroupItem>
+          <ToggleGroupItem value="all" className="px-3">
+            All
+          </ToggleGroupItem>
+        </ToggleGroup>
+
+        <Select value={task} onValueChange={(v) => setPrefs({ task: v })}>
+          <SelectTrigger size="sm" className="w-44" aria-label="Task">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TASK_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         {query.isFetching && !query.isFetchingNextPage && (
-          <span className="text-faint text-[11px] font-medium tracking-wide uppercase">
-            Loading…
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Spinner className="size-3.5" /> Updating…
           </span>
         )}
+
+        <div className="ml-auto flex items-center gap-2">
+          <Select value={sort} onValueChange={(v) => setPrefs({ sort: v as SortKey })}>
+            <SelectTrigger size="sm" className="w-48" aria-label="Sort by">
+              <span className="flex items-center gap-2">
+                <ArrowUpDown className="size-4 text-muted-foreground" />
+                <SelectValue />
+              </span>
+            </SelectTrigger>
+            <SelectContent align="end">
+              {SORT_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={layout}
+            onValueChange={(v) => v && setPrefs({ layout: v as BrowseLayout })}
+            aria-label="Layout"
+          >
+            <ToggleGroupItem value="grid" aria-label="Grid" data-testid="layout-grid">
+              <LayoutGrid />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="table" aria-label="Table" data-testid="layout-table">
+              <List />
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-5">
-        {query.isLoading ? (
-          <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <Skeleton key={i} className="rounded-sleeve h-[88px]" />
-            ))}
-          </div>
-        ) : query.isError ? (
-          <EmptySleeve>
-            <p className="text-muted text-sm">{(query.error as Error).message}</p>
-            <Button size="sm" onClick={() => void query.refetch()}>
-              Try again
+      {query.isLoading ? (
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <ModelCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : query.isError ? (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <WifiOff />
+            </EmptyMedia>
+            <EmptyTitle>Couldn’t reach Hugging Face</EmptyTitle>
+            <EmptyDescription>{(query.error as Error).message}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+              <RotateCcw /> Try again
             </Button>
-          </EmptySleeve>
-        ) : models.length === 0 ? (
-          <EmptySleeve>
-            <p className="text-muted text-sm">No models found — try a different search or filter.</p>
-          </EmptySleeve>
-        ) : (
-          <>
+          </EmptyContent>
+        </Empty>
+      ) : models.length === 0 ? (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <SearchX />
+            </EmptyMedia>
+            <EmptyTitle>No models found</EmptyTitle>
+            <EmptyDescription>Try a different search, or widen the filters.</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button variant="outline" size="sm" onClick={clearFilters}>
+              Clear search and filters
+            </Button>
+          </EmptyContent>
+        </Empty>
+      ) : (
+        <div className={cn('transition-opacity', stale && 'opacity-60')} aria-busy={stale}>
+          {layout === 'table' ? (
+            <ModelTable models={models} onOpen={openModel} />
+          ) : (
             <div
-              className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]"
+              className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]"
               data-testid="model-grid"
             >
               {models.map((model) => (
                 <ModelCard key={model.id} model={model} onClick={() => openModel(model.id)} />
               ))}
             </div>
-            <div ref={sentinelRef} className="h-10" />
-            {query.isFetchingNextPage && (
-              <div className="text-faint pb-4 text-center text-[11px] tracking-wide uppercase">
-                Loading more…
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+          )}
+          <div ref={sentinelRef} className="h-10" />
+          {query.isFetchingNextPage && (
+            <div className="flex items-center justify-center gap-2 pb-4 text-xs text-muted-foreground">
+              <Spinner className="size-3.5" /> Loading more
+            </div>
+          )}
+        </div>
+      )}
+    </Page>
   )
 }

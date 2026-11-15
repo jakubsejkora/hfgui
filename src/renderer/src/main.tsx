@@ -2,13 +2,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { applyThemeClass } from './lib/useTheme'
 import './styles/globals.css'
 
 // Apply the theme class before first paint; useTheme keeps it in sync after.
-document.documentElement.classList.toggle(
-  'light',
-  window.matchMedia('(prefers-color-scheme: light)').matches
-)
+applyThemeClass()
 
 const queryClient = new QueryClient({
   defaultOptions: {

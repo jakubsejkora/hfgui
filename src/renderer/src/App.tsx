@@ -1,30 +1,41 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, type CSSProperties } from 'react'
 import { defaultDestination } from '@shared/destinationRules'
 import { parseModelRef } from '@shared/modelRef'
 import { useDownloadsStore } from './lib/downloadsStore'
 import { useDragStore, type DragModel } from './lib/dragStore'
+import { usePrefs } from './lib/prefsStore'
 import { useDestinations, useInvalidate } from './lib/queries'
-import { useTheme } from './lib/useTheme'
+import { ScrollRootContext } from './lib/scrollRoot'
 import { useDropDownload } from './lib/useDropDownload'
+import { useGlobalShortcuts } from './lib/useGlobalShortcuts'
+import { useTheme } from './lib/useTheme'
 import { useUiStore, type View } from './lib/uiStore'
+import { SidebarInset, SidebarProvider } from './components/ui/sidebar'
 import { TooltipProvider } from './components/ui/tooltip'
+import { AppSidebar } from './components/app/AppSidebar'
+import { CancelDownloadDialog } from './components/app/CancelDownloadDialog'
 import { DownloadsDock } from './components/app/DownloadsDock'
 import { LinkDropOverlay } from './components/app/LinkDropOverlay'
-import { Sidebar } from './components/app/Sidebar'
+import { SiteHeader } from './components/app/SiteHeader'
 import { Toasts } from './components/app/Toasts'
-import { TopBar } from './components/app/TopBar'
+import { TokenDialog } from './components/app/TokenDialog'
 import { BrowseView } from './views/BrowseView'
 import { DownloadsView } from './views/DownloadsView'
 import { ModelDetailView } from './views/ModelDetailView'
+import { OverviewView } from './views/OverviewView'
 import { PrivateInferenceView } from './views/PrivateInferenceView'
 import { SettingsView } from './views/SettingsView'
 
 export default function App() {
   const view = useUiStore((s) => s.view)
+  const sidebarOpen = usePrefs((s) => s.sidebarOpen)
+  const setPrefs = usePrefs((s) => s.set)
   const dropDownload = useDropDownload()
   const { data: destinations } = useDestinations()
   const invalidate = useInvalidate()
+  const scrollRoot = useRef<HTMLDivElement>(null)
   useTheme()
+  useGlobalShortcuts()
 
   useEffect(() => {
     void useDownloadsStore.getState().hydrate()
@@ -67,24 +78,32 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <div className="ambient" />
-      <div className="relative z-10 flex h-full flex-col">
-        <TopBar />
-        <div className="flex min-h-0 flex-1">
-          <Sidebar />
-          <main className="flex min-w-0 flex-1 flex-col">
-            {/* min-h-0 lets each view's own scroll container shrink for the dock */}
-            <div className="min-h-0 flex-1">
+      <SidebarProvider
+        open={sidebarOpen}
+        onOpenChange={(open) => setPrefs({ sidebarOpen: open })}
+        className="h-svh overflow-hidden"
+        style={{ '--sidebar-width': '15rem' } as CSSProperties}
+      >
+        <AppSidebar />
+        <SidebarInset className="min-h-0 overflow-hidden">
+          <SiteHeader />
+          <ScrollRootContext.Provider value={scrollRoot}>
+            {/* One scroll container per page visit (keyed), so each page starts at
+                the top and Browse can restore its own position. */}
+            <div key={view} ref={scrollRoot} className="min-h-0 flex-1 overflow-y-auto">
+              {view === 'overview' && <OverviewView />}
               {view === 'browse' && <BrowseView />}
               {view === 'downloads' && <DownloadsView />}
               {view === 'private-inference' && <PrivateInferenceView />}
               {view === 'settings' && <SettingsView />}
             </div>
-            <DownloadsDock />
-          </main>
-        </div>
-      </div>
+          </ScrollRootContext.Provider>
+          <DownloadsDock />
+        </SidebarInset>
+      </SidebarProvider>
       <ModelDetailView />
+      <TokenDialog />
+      <CancelDownloadDialog />
       <LinkDropOverlay />
       <Toasts />
     </TooltipProvider>

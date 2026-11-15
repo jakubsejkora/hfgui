@@ -38,6 +38,9 @@ const savedClipboard = await app.evaluate(({ clipboard }) => clipboard.readText(
 try {
   const win = await app.firstWindow()
   await win.emulateMedia({ colorScheme: null })
+  // The app lands on Overview; the card grid (dragged below) lives on Browse.
+  await win.waitForSelector('[data-testid="search-input"]', { timeout: 15000 })
+  await win.evaluate(() => window.__hfguiTest.setView('browse'))
   await win.waitForSelector('[data-testid="model-grid"] > button', { timeout: 30000 })
   const ui = () => win.evaluate(() => window.__hfguiTest.getUi())
 

@@ -20,9 +20,11 @@ function createWindow(): BrowserWindow {
     minWidth: 980,
     minHeight: 640,
     show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#08080a' : '#f5f5f7',
+    // The window frame colour (--sidebar in globals.css), shown before first paint.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b0b0b' : '#f3f3f3',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    trafficLightPosition: { x: 20, y: 21 },
+    // Vertically centred on the 56 px header row, which starts 8 px down (inset margin).
+    trafficLightPosition: { x: 20, y: 29 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
