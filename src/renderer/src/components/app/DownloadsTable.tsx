@@ -60,6 +60,9 @@ function revealTarget(job: DownloadJobSnapshot): string {
   return job.files.length === 1 ? `${job.jobDir}/${job.files[0].path}` : job.jobDir
 }
 
+const percentOf = (done: number, total: number): number =>
+  total > 0 ? Math.floor((done / total) * 100) : 0
+
 /** Live speed for a running job; null when there is no fresh sample. */
 function useLiveProgress(job: DownloadJobSnapshot) {
   const progress = useDownloadsStore((s) => s.progress[job.jobId])
@@ -131,8 +134,13 @@ function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boole
   const pct = Math.floor(jobFraction(job) * 100)
   const showBar = isInProgress(job.state)
 
+  // A resumed file is checked against its checksum once all of it is on disk:
+  // local work that sends no network progress, so say so rather than "stalled".
+  const verifying = progress?.verifying
   let meta: React.ReactNode = null
-  if (job.state === 'downloading') {
+  if (verifying) {
+    meta = `Checking downloaded data · ${percentOf(verifying.done, verifying.total)}%`
+  } else if (job.state === 'downloading') {
     meta = (
       <>
         {formatBytes(job.bytesDone)} of {formatBytes(job.totalBytes)}
@@ -176,7 +184,7 @@ function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boole
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <JobStatusBadge state={job.state} stalled={stalled} />
+        <JobStatusBadge state={verifying ? 'verifying' : job.state} stalled={stalled} />
         {showBar && (
           <span className="text-xs text-muted-foreground tabular-nums">{pct}%</span>
         )}

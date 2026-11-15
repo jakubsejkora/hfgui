@@ -3,7 +3,7 @@ import { Popover } from 'radix-ui'
 import { useState } from 'react'
 import { formatSpeed } from '@shared/format'
 import { effectiveSpeedLimit, formatCap, formatSpeedInCapUnit } from '@shared/speedLimit'
-import { selectBusyCount, totalSpeed, useDownloadsStore } from '@/lib/downloadsStore'
+import { selectBusyCount, selectRunningCount, totalSpeed, useDownloadsStore } from '@/lib/downloadsStore'
 import { useSettings } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import { Dot } from './badges'
@@ -17,6 +17,7 @@ import { SpeedLimitControl } from './SpeedLimitControl'
 export function SpeedChip() {
   const { data: settings } = useSettings()
   const busyCount = useDownloadsStore(selectBusyCount)
+  const runningCount = useDownloadsStore(selectRunningCount)
   const speed = useDownloadsStore((s) => totalSpeed(s.jobs, s.progress))
   const [open, setOpen] = useState(false)
   const cap = settings ? effectiveSpeedLimit(settings) : null
@@ -32,9 +33,12 @@ export function SpeedChip() {
         : `Limit ${formatCap(cap)}`
       : speed > 0
         ? formatSpeed(speed)
-        : busyCount > 0
-          ? `${busyCount} queued`
-          : 'No limit'
+        : runningCount > 0
+          ? // Running with nothing arriving: connecting, or checking a resumed file.
+            `${runningCount} active`
+          : busyCount > 0
+            ? `${busyCount} queued`
+            : 'No limit'
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>

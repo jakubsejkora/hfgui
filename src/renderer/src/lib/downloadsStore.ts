@@ -1,11 +1,13 @@
 import { create } from 'zustand'
-import { isBusy, isInProgress } from '@shared/jobStates'
+import { isBusy, isInProgress, isRunning } from '@shared/jobStates'
 import type { DownloadEvent, DownloadJobSnapshot } from '@shared/types'
 
 export interface ProgressInfo {
   bytesPerSec: number
   etaSec: number | null
   currentFile: string | null
+  /** Set while a resumed file is checked against its checksum: bytes checked of total. */
+  verifying: { done: number; total: number } | null
   /** When this sample arrived — a stalled connection simply stops sending them. */
   at: number
 }
@@ -68,6 +70,7 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
           bytesPerSec: ev.bytesPerSec,
           etaSec: ev.etaSec,
           currentFile: ev.currentFile,
+          verifying: ev.verifying ?? null,
           at: Date.now()
         }
       }
@@ -79,6 +82,13 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
 export function selectBusyCount(s: DownloadsState): number {
   let n = 0
   for (const job of Object.values(s.jobs)) if (isBusy(job.state)) n++
+  return n
+}
+
+/** Jobs downloading or verifying right now — not the ones waiting for a slot. */
+export function selectRunningCount(s: DownloadsState): number {
+  let n = 0
+  for (const job of Object.values(s.jobs)) if (isRunning(job.state)) n++
   return n
 }
 

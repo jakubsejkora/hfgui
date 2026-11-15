@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { createServer, type Server } from 'http'
 import type { AddressInfo } from 'net'
 import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
@@ -133,5 +134,92 @@ describe('DownloadJob', () => {
     // Callers chain on this (drag-and-drop "Undo" removes the row next).
     expect(job.state).toBe('cancelled')
     await running
+  })
+})
+
+describe('DownloadJob retries', () => {
+  // 'drop' hands out SLICE bytes from wherever the client asks, then cuts the
+  // connection — a flaky link that still makes progress. 'unavailable' is a 503.
+  const SLICE = 64 * 1024
+  const FILE = Buffer.alloc(8 * SLICE)
+  for (let i = 0; i < FILE.length; i++) FILE[i] = (i * 31) & 0xff
+  const FILE_SHA = createHash('sha256').update(FILE).digest('hex')
+  let flaky: Server
+  let flakyBase = ''
+  let previousBase = ''
+  let mode: 'drop' | 'unavailable' | 'whole' = 'drop'
+  let requests = 0
+
+  beforeAll(async () => {
+    flaky = createServer((req, res) => {
+      requests++
+      if (mode === 'unavailable') {
+        res.writeHead(503)
+        res.end()
+        return
+      }
+      const start = Number(/bytes=(\d+)-/.exec(req.headers.range ?? '')?.[1] ?? 0)
+      res.writeHead(start > 0 ? 206 : 200, { 'Content-Length': String(FILE.length - start) })
+      if (mode === 'whole' || start + SLICE >= FILE.length) {
+        res.end(FILE.subarray(start))
+        return
+      }
+      // Let the client take the slice in before the line goes dead.
+      res.write(FILE.subarray(start, start + SLICE), () => setTimeout(() => res.socket?.destroy(), 20))
+    })
+    await new Promise<void>((resolve) => flaky.listen(0, '127.0.0.1', resolve))
+    flakyBase = `http://127.0.0.1:${(flaky.address() as AddressInfo).port}`
+  })
+
+  afterAll(() => {
+    flaky.close()
+  })
+
+  beforeEach(() => {
+    previousBase = server.baseUrl
+    server.baseUrl = flakyBase
+    requests = 0
+  })
+
+  afterEach(() => {
+    server.baseUrl = previousBase
+  })
+
+  const noWait = (events: DownloadEvent[]): JobDeps => ({ ...deps(events), retryDelaysMs: [0, 0, 0, 0, 0] })
+
+  it('keeps going while each dropped connection moved the file forward', async () => {
+    mode = 'drop'
+    const job = new DownloadJob(
+      request([{ path: 'weights.bin', size: FILE.length, sha256: FILE_SHA }]),
+      join(dir, 'job'),
+      noWait([])
+    )
+    await job.run()
+    // More drops in one file than the five retries a streak allows.
+    expect(job.error).toBeNull()
+    expect(job.state).toBe('completed')
+    expect(requests).toBeGreaterThan(6)
+  })
+
+  it('gives up after five failed retries in a row that got nowhere', async () => {
+    mode = 'unavailable'
+    const job = new DownloadJob(request([{ path: 'weights.bin', size: FILE.length }]), join(dir, 'job'), noWait([]))
+    await job.run()
+    expect(job.state).toBe('error')
+    expect(job.error?.code).toBe('http')
+    expect(requests).toBe(6)
+  })
+
+  it('does not count a download that failed its checksum as progress', async () => {
+    mode = 'whole'
+    const job = new DownloadJob(
+      request([{ path: 'weights.bin', size: FILE.length, sha256: '0'.repeat(64) }]),
+      join(dir, 'job'),
+      noWait([])
+    )
+    await job.run()
+    expect(job.error?.code).toBe('checksum-mismatch')
+    // Five retries, not fifty full re-downloads.
+    expect(requests).toBe(6)
   })
 })

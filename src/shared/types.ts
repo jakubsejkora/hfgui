@@ -104,6 +104,8 @@ export type DownloadEvent =
       bytesPerSec: number
       etaSec: number | null
       currentFile: string | null
+      /** While a resumed file is checked against its checksum: bytes checked so far, of total. */
+      verifying?: { done: number; total: number }
     }
 
 export interface Settings {

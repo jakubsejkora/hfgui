@@ -51,6 +51,14 @@ function DockJob({ job }: { job: DownloadJobSnapshot }) {
             <span>· Verifying</span>
           ) : stalled ? (
             <span>· Waiting for data…</span>
+          ) : progress?.verifying ? (
+            <span>
+              · Checking downloaded data ·{' '}
+              {progress.verifying.total > 0
+                ? Math.floor((progress.verifying.done / progress.verifying.total) * 100)
+                : 0}
+              %
+            </span>
           ) : progress && progress.bytesPerSec > 0 ? (
             <span>
               · {formatSpeed(progress.bytesPerSec)} · {formatEta(progress.etaSec)} left

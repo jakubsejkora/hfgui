@@ -23,9 +23,13 @@ export interface JobDeps {
   track(entries: LedgerEntry[]): void
   /** They form a finished model now (or were deleted): no longer leftovers-in-waiting. */
   untrack(paths: string[]): void
+  /** Backoff before each retry in a failure streak; tests shorten it. */
+  retryDelaysMs?: readonly number[]
 }
 
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000]
+/** However much each attempt moves a file forward, one run gives up on it after this many. */
+const MAX_ATTEMPTS_PER_FILE = 50
 const PROGRESS_INTERVAL_MS = 250
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -190,6 +194,26 @@ export class DownloadJob {
     })
   }
 
+  /** Progress of a file's checksum pass: local work, so no speed and no ETA. */
+  private emitVerifying(done: number, total: number): void {
+    const now = Date.now()
+    if (done < total && now - this.lastEmitAt < PROGRESS_INTERVAL_MS) return
+    // Time spent checking isn't network time: the next file's speed starts fresh.
+    this.lastEmitAt = now
+    this.lastEmitBytes = this.bytesDone
+    this.emaBytesPerSec = 0
+    this.deps.emit({
+      type: 'progress',
+      jobId: this.jobId,
+      bytesDone: this.bytesDone,
+      totalBytes: this.totalBytes,
+      bytesPerSec: 0,
+      etaSec: null,
+      currentFile: this.currentFile,
+      verifying: { done, total }
+    })
+  }
+
   /** Runs the whole job; never rejects — terminal state is reflected in `state`. */
   run(): Promise<void> {
     const running = this.runToEnd()
@@ -218,9 +242,12 @@ export class DownloadJob {
         this.currentFile = file.path
         if (file.state !== 'done') file.state = 'active'
 
-        let attempt = 0
+        const delays = this.deps.retryDelaysMs ?? RETRY_DELAYS_MS
+        let attempts = 0
+        let streak = 0 // failed attempts in a row that moved nothing forward
         // downloadFile early-returns when the final file already exists.
         for (;;) {
+          const before = file.bytesDone
           try {
             await downloadFile({
               url: resolveUrl(this.repoId, this.revision, file.path),
@@ -239,15 +266,21 @@ export class DownloadJob {
               // as a TB/s burst with a 0 s ETA.
               onDiskBytes: (bytes) => {
                 this.lastEmitBytes += Math.max(0, bytes - file.bytesDone)
-              }
+              },
+              onVerify: (done, total) => this.emitVerifying(done, total)
             })
             break
           } catch (e) {
             if (isAbortError(e)) throw e
             const err = classifyError(e)
-            if (err.retryable && attempt < RETRY_DELAYS_MS.length) {
-              await sleep(RETRY_DELAYS_MS[attempt], signal)
-              attempt++
+            attempts++
+            // A dropped connection after real progress is routine over a
+            // multi-hour file, not a failure streak. Only network drops count as
+            // progress: a checksum or size mismatch throws the bytes away.
+            if (err.code === 'network' && file.bytesDone > before) streak = 0
+            if (err.retryable && streak < delays.length && attempts < MAX_ATTEMPTS_PER_FILE) {
+              await sleep(delays[streak], signal)
+              streak++
               continue
             }
             throw err
