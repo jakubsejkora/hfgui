@@ -86,7 +86,7 @@ npm run typecheck  # tsc over main/preload + renderer
 npm test           # vitest unit tests (download engine, link/quant parsing, fit rules, notifications…)
 npm run build      # production bundles into out/
 npm start          # preview the production build
-npm run icon       # re-render build/icon.icns + icon.png from build/icon.svg
+npm run icon       # regenerate build/icon.svg (scripts/icon-halftone.mjs), render .icns + .png
 ```
 
 End-to-end tests (drive the real app, real downloads — needs network):
