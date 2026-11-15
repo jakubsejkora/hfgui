@@ -1,14 +1,22 @@
 # hfgui
 
-A modern Electron app for browsing and downloading Hugging Face models — straight into the
-folders where **LM Studio** and **exo** pick them up. No manual file moving.
+A Mac app for finding and downloading open models from Hugging Face. It picks the size that
+fits your memory and keeps big downloads going until they're done. Models go to a folder of
+your choice, or straight into **LM Studio** and **exo** if you use them.
 
 ![](docs/screenshot-overview.png)
 
 ## What it does
 
+- **Welcome**: on first launch, choose where models go and, optionally, add a Hugging Face
+  token. LM Studio and exo are offered only when they're on this Mac; nothing asks you to
+  install anything. Settings → About → Show again replays it.
 - **Overview** at a glance: what is downloading, what landed, free space where models go,
-  how big a model this Mac can run, a setup guide, and trending models that fit in memory.
+  how big a model this Mac can run, a way into the Guide, and trending models that fit in
+  memory.
+- **Guide**: the basics for people new to local models — GGUF or MLX, which size fits (with
+  this Mac's own memory figures), where files go, running a model with LM Studio, Ollama,
+  llama.cpp, mlx-lm or exo, models that ask for a license, and disk space.
 - **Browse** the Hugging Face Hub: search, sort by Trending / Most downloaded / Most liked /
   Recently updated, filter by format (GGUF / MLX) and task — as cards or as a dense table.
   Cards show parameters and the size you would actually download (the estimated Q4_K_M
@@ -48,16 +56,22 @@ folders where **LM Studio** and **exo** pick them up. No manual file moving.
 - **Notifications**: a macOS notification when a download finishes or fails in the
   background, a Dock badge with the number of active downloads, and the Dock icon's
   progress bar.
-- **Keyboard**: ⌘K or / to search, ⌘1–5 for pages, ⌘B for the sidebar, ⌘, for Settings.
+- **Keyboard**: ⌘K or / to search, ⌘1–6 for pages, ⌘B for the sidebar, ⌘, for Settings.
 - **Drag a card onto a destination** to start a download without opening the model. For
   GGUF repos that starts the quantization hfgui would have recommended for your RAM, and
   says which one it picked with Change / Undo. Every path is also a button.
-- **Destinations**
-  - **LM Studio** → `~/.lmstudio/models/{publisher}/{model}/` (auto-detected, including a
-    custom models folder configured in LM Studio). Models appear after reopening LM Studio.
-  - **exo** → `~/.exo/models/{org}--{model}/` (flat repo folder; exo loads complete folders
-    automatically). Offered for MLX models.
-  - **Custom folder** for anything else.
+- **Destinations**: a default for new downloads (Settings), and each download can pick
+  another.
+  - **Models folder** → `~/Models/{publisher}/{model}/` unless you choose another folder:
+    plain files any app can open.
+  - **LM Studio** → `~/.lmstudio/models/{publisher}/{model}/`, when LM Studio is installed
+    (auto-detected, including a custom models folder configured in LM Studio). Models appear
+    after reopening LM Studio.
+  - **exo** → `~/.exo/models/{org}--{model}/`, when exo is installed (flat repo folder; exo
+    loads complete folders automatically). Offered for MLX models.
+
+  Apps that aren't installed don't appear anywhere: not on the model sheet, the drop
+  targets, the menus or in Settings.
 
 ## Design
 
@@ -74,6 +88,8 @@ one org reads as a set.
 ![](docs/screenshot-browse.png)
 ![](docs/screenshot-detail.png)
 ![](docs/screenshot-downloads.png)
+![](docs/screenshot-guide.png)
+![](docs/screenshot-welcome.png)
 
 ## Development
 
