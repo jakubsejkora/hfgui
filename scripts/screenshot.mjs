@@ -7,7 +7,7 @@
 // populated, and with HF_HOME pointed at an empty dir so no personal Hugging
 // Face token or account ever lands in a screenshot.
 import { _electron as electron } from 'playwright-core'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'fs'
+import { closeSync, ftruncateSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -89,13 +89,26 @@ writeFileSync(
     })
   ])
 )
+// Finished models get their files, as sparse placeholders (no disk used), or
+// the library check would show them as "Files missing".
+for (const job of JSON.parse(readFileSync(join(userDataDir, 'downloads.json'), 'utf8'))) {
+  if (job.state !== 'completed') continue
+  for (const f of job.files) {
+    const path = join(job.jobDir, f.path)
+    mkdirSync(join(path, '..'), { recursive: true })
+    const fd = openSync(path, 'w')
+    ftruncateSync(fd, f.size)
+    closeSync(fd)
+  }
+}
 
 const app = await electron.launch({
   executablePath: join(
     process.cwd(),
     'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'
   ),
-  args: [join(process.cwd(), 'out/main/index.js')],
+  // Retina-sharp whatever display (or screen-sharing session) is attached.
+  args: ['--force-device-scale-factor=2', join(process.cwd(), 'out/main/index.js')],
   env: { ...process.env, HFGUI_USER_DATA_DIR: userDataDir, HF_HOME: hfHome }
 })
 

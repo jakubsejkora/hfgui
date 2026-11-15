@@ -85,9 +85,11 @@ your choice, or straight into **LM Studio** and **exo** if you use them.
 
 A monochrome dashboard built on [shadcn/ui](https://ui.shadcn.com) — inset sidebar, page
 headers, cards and index tables — in light and dark (System / Light / Dark in Settings).
-There is exactly one accent, a signal red, and it only ever means *live*: running
-downloads, the in-progress count, and the quant hfgui recommends. Statuses are outline
-pills with a coloured dot.
+Status colours mean what people expect: green is all good (and going, when the dot
+pulses), amber needs attention (paused, stalled, files missing), red is a problem that
+stopped a download, and grey is waiting or your own doing (queued, cancelled). Progress bars
+use the same colour as their status. The signal red of the logo is a brand colour, never a
+status. Statuses are outline pills with a coloured dot.
 
 Every model gets a deterministic gradient avatar derived from its repo id, with the hue
 family coming from the author, so a repo always looks the same and a page of results from
