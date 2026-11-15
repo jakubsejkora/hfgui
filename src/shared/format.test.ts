@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatBytes, formatCount, formatEta, relativeTime } from './format'
+import { formatBytes, formatCount, formatEta, relativeTime, timeAgo } from './format'
 
 describe('formatBytes', () => {
   it('formats across units', () => {
@@ -31,6 +31,24 @@ describe('formatEta', () => {
     expect(formatEta(90)).toBe('1m 30s')
     expect(formatEta(3700)).toBe('1h 1m')
     expect(formatEta(null)).toBe('—')
+  })
+
+  it('never shows 60 seconds', () => {
+    expect(formatEta(119.4)).toBe('2m 0s')
+    expect(formatEta(59.2)).toBe('1m 0s')
+    expect(formatEta(3599.5)).toBe('1h 0m')
+  })
+})
+
+describe('timeAgo', () => {
+  const now = Date.parse('2026-07-16T12:00:00Z')
+  it('has minute granularity for recent app events', () => {
+    expect(timeAgo(now - 10_000, now)).toBe('just now')
+    expect(timeAgo(now - 5 * 60_000, now)).toBe('5m ago')
+    expect(timeAgo(now - 3 * 3600_000, now)).toBe('3h ago')
+    expect(timeAgo(now - 30 * 3600_000, now)).toBe('yesterday')
+    expect(timeAgo(now - 5 * 86400_000, now)).toBe('5d ago')
+    expect(timeAgo(null, now)).toBe('—')
   })
 })
 

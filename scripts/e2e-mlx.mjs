@@ -4,7 +4,7 @@
  *
  * Run: npm run build && node scripts/e2e-mlx.mjs
  */
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import { _electron as electron } from 'playwright-core'
@@ -24,6 +24,8 @@ if (existsSync(expectedDir)) {
 }
 
 const userDataDir = mkdtempSync(join(tmpdir(), 'hfgui-e2e-mlx-'))
+// An empty profile would open on the first-run welcome.
+writeFileSync(join(userDataDir, 'settings.json'), JSON.stringify({ onboarded: true }))
 const app = await electron.launch({
   executablePath: join(
     process.cwd(),

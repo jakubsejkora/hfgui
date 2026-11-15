@@ -4,18 +4,21 @@ import { mkdir, rename, unlink, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { DEFAULT_SPEED_LIMIT, clampSpeedLimit } from '@shared/speedLimit'
-import type { Settings, TokenStatus } from '@shared/types'
+import type { DestinationKind, Settings, TokenStatus } from '@shared/types'
 
 const DEFAULTS: Settings = {
   lmstudioDir: null,
   exoDir: null,
   customDir: null,
+  preferredDestination: null,
+  onboarded: false,
   maxConcurrentJobs: 2,
   autoResume: false,
   theme: 'system',
   clipboardWatch: true,
   speedLimitEnabled: false,
-  speedLimitBytesPerSec: DEFAULT_SPEED_LIMIT
+  speedLimitBytesPerSec: DEFAULT_SPEED_LIMIT,
+  notifications: true
 }
 
 /**
@@ -29,7 +32,14 @@ function normalize(s: Settings): Settings {
     theme: ['system', 'light', 'dark'].includes(s.theme) ? s.theme : 'system',
     clipboardWatch: s.clipboardWatch !== false,
     speedLimitEnabled: s.speedLimitEnabled === true,
-    speedLimitBytesPerSec: clampSpeedLimit(s.speedLimitBytesPerSec)
+    speedLimitBytesPerSec: clampSpeedLimit(s.speedLimitBytesPerSec),
+    notifications: s.notifications !== false,
+    preferredDestination: (['lmstudio', 'exo', 'custom'] as const).includes(
+      s.preferredDestination as DestinationKind
+    )
+      ? s.preferredDestination
+      : null,
+    onboarded: s.onboarded === true
   }
 }
 
@@ -44,6 +54,12 @@ export class SettingsStore {
   private file: string
   private tokenFile: string
   private cache: Settings
+  /**
+   * Every write goes through this chain. Writes share one `.tmp` path per file,
+   * so two overlapping set() calls (a slider dragged across steps) used to race
+   * on the rename and reject.
+   */
+  private writing: Promise<void> = Promise.resolve()
 
   constructor(userDataDir: string) {
     this.file = join(userDataDir, 'settings.json')
@@ -54,7 +70,9 @@ export class SettingsStore {
   private loadSync(): Settings {
     try {
       const raw = JSON.parse(readFileSync(this.file, 'utf8'))
-      return normalize({ ...DEFAULTS, ...raw })
+      // A settings file without the flag predates the welcome screen: that
+      // install is already set up, so don't greet it as new.
+      return normalize({ ...DEFAULTS, onboarded: true, ...raw })
     } catch {
       return { ...DEFAULTS }
     }
@@ -64,15 +82,22 @@ export class SettingsStore {
     return { ...this.cache }
   }
 
+  private enqueue(write: () => Promise<void>): Promise<void> {
+    const next = this.writing.catch(() => {}).then(write)
+    this.writing = next
+    return next
+  }
+
   async set(patch: Partial<Settings>): Promise<Settings> {
     this.cache = normalize({ ...this.cache, ...patch })
-    await writeAtomic(this.file, JSON.stringify(this.cache, null, 2))
+    const data = JSON.stringify(this.cache, null, 2)
+    await this.enqueue(() => writeAtomic(this.file, data))
     return this.get()
   }
 
   async setToken(token: string | null): Promise<void> {
     if (!token) {
-      await unlink(this.tokenFile).catch(() => {})
+      await this.enqueue(() => unlink(this.tokenFile).catch(() => {}))
       return
     }
     let payload: { enc: boolean; data: string }
@@ -81,7 +106,7 @@ export class SettingsStore {
     } else {
       payload = { enc: false, data: Buffer.from(token, 'utf8').toString('base64') }
     }
-    await writeAtomic(this.tokenFile, JSON.stringify(payload))
+    await this.enqueue(() => writeAtomic(this.tokenFile, JSON.stringify(payload)))
   }
 
   private readAppToken(): string | null {

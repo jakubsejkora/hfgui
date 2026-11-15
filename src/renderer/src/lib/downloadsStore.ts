@@ -1,18 +1,30 @@
 import { create } from 'zustand'
+import { isBusy, isInProgress, isRunning } from '@shared/jobStates'
 import type { DownloadEvent, DownloadJobSnapshot } from '@shared/types'
 
 export interface ProgressInfo {
   bytesPerSec: number
   etaSec: number | null
   currentFile: string | null
+  /** Set while a resumed file is checked against its checksum: bytes checked of total. */
+  verifying: { done: number; total: number } | null
+  /** When this sample arrived — a stalled connection simply stops sending them. */
+  at: number
 }
 
 interface DownloadsState {
   jobs: Record<string, DownloadJobSnapshot>
+  /** Live speed/ETA, only for jobs that are actually downloading. */
   progress: Record<string, ProgressInfo>
   hydrated: boolean
   hydrate(): Promise<void>
   applyEvent(ev: DownloadEvent): void
+}
+
+function without<T>(record: Record<string, T>, key: string): Record<string, T> {
+  if (!(key in record)) return record
+  const { [key]: _drop, ...rest } = record
+  return rest
 }
 
 export const useDownloadsStore = create<DownloadsState>((set, get) => ({
@@ -21,48 +33,70 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
   hydrated: false,
 
   hydrate: async () => {
-    const list = await window.hfgui.listDownloads()
-    const jobs: Record<string, DownloadJobSnapshot> = {}
-    for (const snap of list) jobs[snap.jobId] = snap
-    set({ jobs, hydrated: true })
+    try {
+      const list = await window.hfgui.listDownloads()
+      const listed: Record<string, DownloadJobSnapshot> = {}
+      for (const snap of list) listed[snap.jobId] = snap
+      // An event that raced ahead of the list is newer than the list's copy.
+      set((s) => ({ jobs: { ...listed, ...s.jobs }, hydrated: true }))
+    } catch {
+      set({ hydrated: true })
+    }
   },
 
   applyEvent: (ev) => {
     if (ev.type === 'state') {
-      set((s) => ({ jobs: { ...s.jobs, [ev.jobId]: ev.snapshot } }))
+      set((s) => ({
+        jobs: { ...s.jobs, [ev.jobId]: ev.snapshot },
+        // Speed and ETA describe a running transfer. Keeping them past it showed
+        // "8 MB/s · 5m left" on queued jobs and inflated the combined speed.
+        progress: ev.snapshot.state === 'downloading' ? s.progress : without(s.progress, ev.jobId)
+      }))
       return
     }
     if (ev.type === 'removed') {
-      set((s) => {
-        const { [ev.jobId]: _job, ...jobs } = s.jobs
-        const { [ev.jobId]: _progress, ...progress } = s.progress
-        return { jobs, progress }
-      })
+      set((s) => ({ jobs: without(s.jobs, ev.jobId), progress: without(s.progress, ev.jobId) }))
       return
     }
-    if (ev.type === 'progress') {
-      const job = get().jobs[ev.jobId]
-      set((s) => ({
-        jobs: job
-          ? { ...s.jobs, [ev.jobId]: { ...job, bytesDone: ev.bytesDone } }
-          : s.jobs,
-        progress: {
-          ...s.progress,
-          [ev.jobId]: {
-            bytesPerSec: ev.bytesPerSec,
-            etaSec: ev.etaSec,
-            currentFile: ev.currentFile
-          }
+    if (ev.type === 'updates') return
+    // progress
+    const job = get().jobs[ev.jobId]
+    if (!job || job.state !== 'downloading') return
+    set((s) => ({
+      // Drivers read bytesDone live through __hfguiTest.getJobs().
+      jobs: { ...s.jobs, [ev.jobId]: { ...job, bytesDone: ev.bytesDone } },
+      progress: {
+        ...s.progress,
+        [ev.jobId]: {
+          bytesPerSec: ev.bytesPerSec,
+          etaSec: ev.etaSec,
+          currentFile: ev.currentFile,
+          verifying: ev.verifying ?? null,
+          at: Date.now()
         }
-      }))
-    }
+      }
+    }))
   }
 }))
 
-export const ACTIVE_JOB_STATES = new Set(['queued', 'downloading', 'verifying'])
+/** Jobs that will progress without the user doing anything (sidebar + Dock badge). */
+export function selectBusyCount(s: DownloadsState): number {
+  let n = 0
+  for (const job of Object.values(s.jobs)) if (isBusy(job.state)) n++
+  return n
+}
 
-export function selectActiveCount(jobs: Record<string, DownloadJobSnapshot>): number {
-  return Object.values(jobs).filter((j) => ACTIVE_JOB_STATES.has(j.state)).length
+/** Jobs downloading or verifying right now — not the ones waiting for a slot. */
+export function selectRunningCount(s: DownloadsState): number {
+  let n = 0
+  for (const job of Object.values(s.jobs)) if (isRunning(job.state)) n++
+  return n
+}
+
+export function selectInProgressCount(s: DownloadsState): number {
+  let n = 0
+  for (const job of Object.values(s.jobs)) if (isInProgress(job.state)) n++
+  return n
 }
 
 /** Combined live speed of every running download, bytes/sec. */
@@ -72,11 +106,14 @@ export function totalSpeed(
 ): number {
   let sum = 0
   for (const job of Object.values(jobs)) {
-    if (ACTIVE_JOB_STATES.has(job.state)) sum += progress[job.jobId]?.bytesPerSec ?? 0
+    if (job.state === 'downloading') sum += progress[job.jobId]?.bytesPerSec ?? 0
   }
   return sum
 }
 
-export function sortedJobs(jobs: Record<string, DownloadJobSnapshot>): DownloadJobSnapshot[] {
-  return Object.values(jobs).sort((a, b) => b.createdAt - a.createdAt)
+/** No progress sample for this long means the transfer is stalled, not slow. */
+export const STALL_MS = 5000
+
+export function jobFraction(job: Pick<DownloadJobSnapshot, 'bytesDone' | 'totalBytes'>): number {
+  return job.totalBytes > 0 ? Math.min(1, job.bytesDone / job.totalBytes) : 0
 }

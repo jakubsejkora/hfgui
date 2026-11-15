@@ -1,5 +1,4 @@
-import { Gauge } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { formatSpeed } from '@shared/format'
 import {
   DEFAULT_SPEED_LIMIT,
@@ -9,24 +8,24 @@ import {
   formatMbit,
   nearestStep
 } from '@shared/speedLimit'
-import type { Settings } from '@shared/types'
 import { totalSpeed, useDownloadsStore } from '@/lib/downloadsStore'
-import { useInvalidate, useSettings } from '@/lib/queries'
+import { useSettings, useUpdateSettings } from '@/lib/queries'
 import { cn } from '@/lib/utils'
+import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 
 /**
  * The on/off switch and stepped slider for the download speed cap. The same
- * component sits in Settings and in the top bar's speed popover, so the two
+ * component sits in Settings and in the header's speed popover, so the two
  * places can never disagree about what the cap is.
  */
 export function SpeedLimitControl({ className }: { className?: string }) {
   const { data: settings } = useSettings()
-  const invalidate = useInvalidate()
-  const jobs = useDownloadsStore((s) => s.jobs)
-  const progress = useDownloadsStore((s) => s.progress)
+  const update = useUpdateSettings()
+  const speed = useDownloadsStore((s) => totalSpeed(s.jobs, s.progress))
 
+  const switchId = useId()
   const enabled = settings?.speedLimitEnabled ?? false
   const cap = settings?.speedLimitBytesPerSec ?? DEFAULT_SPEED_LIMIT
 
@@ -35,66 +34,67 @@ export function SpeedLimitControl({ className }: { className?: string }) {
   useEffect(() => setDraft(nearestStep(cap)), [cap])
   const [note, setNote] = useState<string | null>(null)
 
-  const save = async (patch: Partial<Settings>): Promise<void> => {
-    await window.hfgui.setSettings(patch)
-    invalidate(['settings'])
-  }
-
   const toggle = (on: boolean): void => {
     if (!on) {
       setNote(null)
-      void save({ speedLimitEnabled: false })
+      update.mutate({ speedLimitEnabled: false })
       return
     }
-    const current = totalSpeed(jobs, progress)
-    const next = capOnEnable(cap, current)
+    const next = capOnEnable(cap, speed)
     setNote(
       next !== cap
-        ? `Capped below half of the current ${formatSpeed(current)}, so the rest of your connection stays free. Adjust as you like.`
+        ? `Capped below half of the current ${formatSpeed(speed)}, so the rest of your connection stays free. Adjust as you like.`
         : null
     )
-    void save({ speedLimitEnabled: true, speedLimitBytesPerSec: next })
+    update.mutate({ speedLimitEnabled: true, speedLimitBytesPerSec: next })
   }
 
   const shown = SPEED_STEPS[draft]
 
   return (
-    <div className={cn('flex flex-col gap-3', className)}>
-      <div className="flex items-start gap-3">
-        <Gauge className="text-accent mt-0.5 h-4 w-4 shrink-0" />
-        <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-semibold">Limit download speed</div>
-          <div className="text-faint text-[11px] leading-relaxed">
-            Leaves room on your connection for calls and browsing. Shared across all
-            downloads, and applies immediately — including to downloads already running.
-          </div>
+    <div className={cn('flex flex-col gap-4', className)}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 space-y-1">
+          <Label htmlFor={switchId} className="text-sm font-medium">
+            Limit download speed
+          </Label>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Leaves room on your connection for calls and browsing. Shared across all downloads,
+            and applies immediately — including to downloads already running.
+          </p>
         </div>
-        <Switch checked={enabled} onCheckedChange={toggle} ariaLabel="Limit download speed" />
+        <Switch
+          id={switchId}
+          checked={enabled}
+          onCheckedChange={toggle}
+          aria-label="Limit download speed"
+        />
       </div>
 
-      <div className={cn('flex items-center gap-4 pl-7', !enabled && 'opacity-45')}>
+      <div className={cn('flex items-center gap-4', !enabled && 'opacity-50')}>
         <Slider
-          value={draft}
+          value={[draft]}
           min={0}
           max={SPEED_STEPS.length - 1}
-          onValueChange={setDraft}
-          onValueCommit={(i) => {
+          step={1}
+          onValueChange={([i]) => setDraft(i)}
+          onValueCommit={([i]) => {
             setNote(null)
-            void save({ speedLimitBytesPerSec: SPEED_STEPS[i] })
+            update.mutate({ speedLimitBytesPerSec: SPEED_STEPS[i] })
           }}
           disabled={!enabled}
-          ariaLabel="Download speed limit"
-          className="w-auto flex-1"
+          aria-label="Download speed limit"
+          className="flex-1"
         />
-        <div className="w-24 shrink-0 text-right">
-          <div className="tnum text-sm font-semibold" data-testid="speed-limit-label">
+        <div className="w-20 shrink-0 text-right">
+          <div className="text-sm font-semibold tabular-nums" data-testid="speed-limit-label">
             {formatCap(shown)}
           </div>
-          <div className="text-faint tnum text-[10px]">{formatMbit(shown)}</div>
+          <div className="text-[11px] text-muted-foreground tabular-nums">{formatMbit(shown)}</div>
         </div>
       </div>
 
-      {note && enabled && <p className="text-accent pl-7 text-[11px] leading-relaxed">{note}</p>}
+      {note && enabled && <p className="text-xs leading-relaxed text-muted-foreground">{note}</p>}
     </div>
   )
 }

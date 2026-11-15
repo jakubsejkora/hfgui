@@ -16,7 +16,8 @@ const OPEN_DETAILS_MESSAGE: Record<string, string> = {
 }
 
 /**
- * Turn "card dropped on a destination" into a running download.
+ * Turn "model dropped on a destination" (or "Download recommended to…" from a
+ * card's menu) into a running download.
  *
  * The chosen quantization is always announced, with a way to change it and a
  * way to undo, because the gesture itself says nothing about which variant the
@@ -28,7 +29,14 @@ export function useDropDownload(): (model: DragModel, destination: DestinationIn
 
   return useCallback(
     async (model, destination) => {
-      if (!destination.path) return
+      let baseDir = destination.path
+      // A custom folder that was never chosen used to make the drop do nothing
+      // at all. Ask for one instead.
+      if (!baseDir && destination.kind === 'custom') {
+        baseDir = await window.hfgui.pickDirectory({ title: 'Choose a download folder' })
+        if (!baseDir) return
+      }
+      if (!baseDir) return
       try {
         const detail = await queryClient.fetchQuery({
           queryKey: ['model', model.repoId],
@@ -68,12 +76,17 @@ export function useDropDownload(): (model: DragModel, destination: DestinationIn
           displayName: plan.displayName,
           format: detail.format,
           files: plan.files,
-          destination: { kind: destination.kind, baseDir: destination.path }
+          destination: { kind: destination.kind, baseDir }
         })
 
         if (!result.ok) {
           toast('error', result.message)
           return
+        }
+        if (destination.kind === 'custom') {
+          // Main remembers the folder; refresh what the UI shows for it.
+          void queryClient.invalidateQueries({ queryKey: ['settings'] })
+          void queryClient.invalidateQueries({ queryKey: ['destinations'] })
         }
 
         const size = formatBytes(plan.files.reduce((sum, f) => sum + f.size, 0))
@@ -81,9 +94,10 @@ export function useDropDownload(): (model: DragModel, destination: DestinationIn
         toast(
           'success',
           plan.quantLabel
-            ? `Downloading ${plan.quantLabel} (${size}) to ${destination.label} — the best fit for this Mac.`
-            : `Downloading ${detail.name} (${size}) to ${destination.label}.`,
+            ? `Downloading ${plan.quantLabel} (${size}) to ${destination.label}`
+            : `Downloading ${detail.name} (${size}) to ${destination.label}`,
           {
+            description: plan.quantLabel ? 'The best fit for this Mac’s memory.' : undefined,
             actions: [
               {
                 label: 'Change',
@@ -93,6 +107,9 @@ export function useDropDownload(): (model: DragModel, destination: DestinationIn
               {
                 label: 'Undo',
                 testid: 'toast-action-undo',
+                // No confirmation here: Undo is the user taking back their own
+                // gesture a moment ago. cancel() resolves once the job has
+                // stopped, so the remove that follows always lands.
                 onClick: () => {
                   void window.hfgui
                     .cancelDownload(jobId, { deletePartial: true })

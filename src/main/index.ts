@@ -1,9 +1,11 @@
-import { BrowserWindow, app, nativeTheme, session, shell } from 'electron'
+import { BrowserWindow, Notification, app, nativeTheme, session, shell } from 'electron'
 import { join } from 'path'
+import { IPC } from '@shared/ipc'
 import { effectiveSpeedLimit } from '@shared/speedLimit'
 import { registerModelWithExo } from './destinations/exoApi'
 import { DownloadManager } from './downloads/manager'
 import { registerIpc } from './ipc'
+import { createNotifier, type DownloadNotice } from './notifications'
 import { SettingsStore } from './settings'
 
 // Deterministic userData for e2e runs.
@@ -13,6 +15,37 @@ if (process.env.HFGUI_USER_DATA_DIR) {
 
 let manager: DownloadManager | null = null
 
+/** Notifications are dropped by the OS if nothing holds them until clicked. */
+const visibleNotices = new Set<Notification>()
+
+function showDownloads(): void {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (!win) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+  win.webContents.send(IPC.navigate, 'downloads')
+}
+
+function showNotice(notice: DownloadNotice): void {
+  // The e2e drivers run unfocused windows; record what would have been shown
+  // (readable via app.evaluate) rather than filling Notification Center.
+  if (process.env.HFGUI_USER_DATA_DIR) {
+    const g = globalThis as { __hfguiNotifications?: DownloadNotice[] }
+    ;(g.__hfguiNotifications ??= []).push(notice)
+    return
+  }
+  if (!Notification.isSupported()) return
+  const n = new Notification({ title: notice.title, body: notice.body })
+  visibleNotices.add(n)
+  n.on('click', () => {
+    visibleNotices.delete(n)
+    showDownloads()
+  })
+  n.on('close', () => visibleNotices.delete(n))
+  n.show()
+}
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
@@ -20,9 +53,11 @@ function createWindow(): BrowserWindow {
     minWidth: 980,
     minHeight: 640,
     show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#08080a' : '#f5f5f7',
+    // The window frame colour (--sidebar in globals.css), shown before first paint.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b0b0b' : '#f3f3f3',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    trafficLightPosition: { x: 20, y: 21 },
+    // Vertically centred on the 56 px header row, which starts 8 px down (inset margin).
+    trafficLightPosition: { x: 20, y: 29 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -119,7 +154,41 @@ if (!gotLock) {
       registerInExo: registerModelWithExo
     })
     registerIpc(manager, settings)
-    await manager.init()
+    // A damaged downloads.json must never cost the user their window: init()
+    // used to throw here, before createWindow(), leaving a Dock icon and nothing else.
+    try {
+      await manager.init()
+    } catch (e) {
+      console.error('[hfgui] could not restore downloads:', e)
+    }
+
+    // Notification Center, Dock badge and Dock progress bar. Seeded with the
+    // restored jobs so only transitions from here on are announced.
+    const notifier = createNotifier(
+      {
+        enabled: () => settings.get().notifications,
+        appFocused: () => BrowserWindow.getAllWindows().some((w) => w.isFocused()),
+        notify: showNotice,
+        setBadge: (text) => app.dock?.setBadge(text),
+        setProgress: (fraction) => {
+          for (const w of BrowserWindow.getAllWindows()) {
+            if (!w.isDestroyed()) w.setProgressBar(fraction)
+          }
+        }
+      },
+      manager.list()
+    )
+    manager.onEvent((ev) => notifier.handle(ev))
+    setInterval(() => notifier.tick(), 1000).unref()
+
+    // Newer versions of finished downloads: shortly after launch, then twice a
+    // day. Not under a test driver, where results would depend on the Hub.
+    if (!process.env.HFGUI_USER_DATA_DIR) {
+      const m = manager
+      const check = (): void => void m.checkUpdates().catch(() => {})
+      setTimeout(check, 20_000).unref()
+      setInterval(check, 12 * 60 * 60_000).unref()
+    }
 
     // Packaged builds take their icon from the bundle; without this, dev runs
     // would show Electron's in the Dock.

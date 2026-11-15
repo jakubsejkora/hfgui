@@ -53,6 +53,10 @@ export type DownloadErrorCode =
   | 'size-mismatch'
   | 'checksum-mismatch'
   | 'http'
+  /** The folder can't be written to (EACCES / EPERM / EROFS). */
+  | 'permission'
+  /** The folder vanished mid-download — deleted, or its drive disconnected. */
+  | 'folder-unavailable'
   | 'unknown'
 
 export interface FileProgress {
@@ -82,11 +86,63 @@ export interface DownloadJobSnapshot {
   completedAt: number | null
   /** Set after a completed exo download is (auto-)registered with exo. */
   exoRegistration: ExoRegistration | null
+  /**
+   * Paused by the user, as opposed to by quitting mid-download. "Resume on
+   * launch" only picks up the latter. Absent in snapshots from older versions.
+   */
+  pausedByUser?: boolean
+  /** Set on a download that updates an older one (see UpdateLink). */
+  update?: UpdateLink | null
+  /** A newer version of this model was downloaded; this one is kept alongside it. */
+  supersededBy?: string | null
 }
+
+/**
+ * A download that is a newer version of another. It is built in its own
+ * folder, sharing unchanged files with the old one (copy-on-write clones), and
+ * moves into the model's folder once complete — file by file, so other
+ * downloads sharing that folder (other GGUF sizes) are left alone. The old
+ * version's files move aside to `<folder>@<its short revision>`, or are
+ * replaced.
+ */
+export interface UpdateLink {
+  /** The older download. */
+  of: string
+  /** Its revision — names the folder it moves to when kept. */
+  fromRevision: string
+  /** The folder this version moves into once complete; null once it has. */
+  pendingMove: string | null
+  /** Keep the old version beside this one, or let this one replace it. Absent (older updates): kept. */
+  keepOld?: boolean
+  /** Where the old version's files go when kept; fixed once chosen, so a stop can't pick another. */
+  aside?: string | null
+  /** How far moving into place got, so a stop part-way resumes where it was. */
+  stage?: 'aside' | 'place' | 'drop' | null
+}
+
+/** What hfgui knows about a newer version of a finished download. */
+export type UpdateStatus =
+  | { status: 'current'; checkedAt: number }
+  | {
+      status: 'available'
+      checkedAt: number
+      revision: string
+      /** When the newer version was published (the repo's last change). */
+      lastModified: string | null
+      /** Files that differ or are new, by path. */
+      changed: string[]
+      /** What has to be downloaded; unchanged files are shared, not copied. */
+      fetchBytes: number
+    }
+  /** The files this download has are gone from the latest version (renamed or removed). */
+  | { status: 'gone'; checkedAt: number }
+  | { status: 'failed'; checkedAt: number; message: string }
 
 export type DownloadEvent =
   | { type: 'state'; jobId: string; snapshot: DownloadJobSnapshot }
   | { type: 'removed'; jobId: string }
+  /** Update checks have new results: ask for them again. */
+  | { type: 'updates' }
   | {
       type: 'progress'
       jobId: string
@@ -95,14 +151,20 @@ export type DownloadEvent =
       bytesPerSec: number
       etaSec: number | null
       currentFile: string | null
+      /** While a resumed file is checked against its checksum: bytes checked so far, of total. */
+      verifying?: { done: number; total: number }
     }
 
 export interface Settings {
   /** null = auto-detect */
   lmstudioDir: string | null
   exoDir: string | null
-  /** Last used custom folder. */
+  /** The models folder: hfgui's own destination, for any app that reads plain files. */
   customDir: string | null
+  /** Where new downloads go unless one picks another place; null = hfgui's own order. */
+  preferredDestination: DestinationKind | null
+  /** The first-run welcome is done. Installs from before it existed count as done. */
+  onboarded: boolean
   maxConcurrentJobs: number
   autoResume: boolean
   theme: Theme
@@ -112,6 +174,8 @@ export interface Settings {
   speedLimitEnabled: boolean
   /** Remembered separately from the switch, so turning the cap off and on keeps it. */
   speedLimitBytesPerSec: number
+  /** Native notification when a download finishes or fails while hfgui is in the background. */
+  notifications: boolean
 }
 
 export interface DestinationInfo {
@@ -128,6 +192,8 @@ export interface SystemInfo {
   totalMemoryBytes: number
   platform: string
   arch: string
+  /** Suggested models folder for people who haven't chosen one (~/Models). */
+  defaultModelsDir: string
 }
 
 export interface DiskSpace {
@@ -144,3 +210,29 @@ export interface TokenStatus {
 export type StartDownloadResult =
   | { ok: true; jobId: string }
   | { ok: false; code: 'duplicate' | 'disk-full' | 'invalid'; message: string }
+
+/** Outcome of a job action that can be refused (e.g. resume). */
+export type ActionResult = { ok: true } | { ok: false; message: string }
+
+/** Outcome of deleting a download's data from disk. */
+export type DeleteResult =
+  | {
+      ok: true
+      freedBytes: number
+      /** Files left in place because another download in the list uses them too. */
+      keptShared: number
+    }
+  | { ok: false; message: string }
+
+/** Where hfgui's downloads are using disk space, for the cleanup UI. */
+export interface StorageReport {
+  /** Bytes on disk per unfinished download: partial files plus files it already finished. */
+  held: Record<string, number>
+  /**
+   * Data from downloads that never finished and are no longer in the list —
+   * dead space hfgui wrote and can safely delete. Never other apps' files.
+   */
+  leftovers: { files: number; bytes: number }
+  /** Finished downloads whose files were moved, deleted or truncated outside hfgui. */
+  missing: string[]
+}

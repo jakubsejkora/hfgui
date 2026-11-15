@@ -27,10 +27,18 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
       return { ok: false, code: 'invalid', message: 'Invalid download request' }
     }
     if (req.destination.kind === 'custom') {
-      await settings.set({ customDir: req.destination.baseDir })
+      // Remembering the folder is a convenience; failing to save it (a full
+      // disk, say) must not turn into a rejected start with no message.
+      await settings
+        .set({ customDir: req.destination.baseDir })
+        .catch((e) => console.error('[hfgui] could not remember the custom folder:', e))
     }
-    const jobDir = adapter.resolveJobDir(req.repoId, req.destination.baseDir)
-    return manager.start(req, jobDir)
+    try {
+      const jobDir = adapter.resolveJobDir(req.repoId, req.destination.baseDir)
+      return await manager.start(req, jobDir)
+    } catch (e) {
+      return { ok: false, code: 'invalid', message: (e as Error).message }
+    }
   })
 
   ipcMain.handle(IPC.pauseDownload, (_e, jobId: string) => manager.pause(jobId))
@@ -43,6 +51,16 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
     manager.retryExoRegistration(jobId)
   )
   ipcMain.handle(IPC.listDownloads, () => manager.list())
+  ipcMain.handle(IPC.deleteDownload, (_e, jobId: string) => manager.deleteDownload(jobId))
+  ipcMain.handle(IPC.getStorageReport, () => manager.storageReport())
+  ipcMain.handle(IPC.cleanLeftovers, () => manager.cleanLeftovers())
+  ipcMain.handle(IPC.getUpdates, () => manager.getUpdates())
+  ipcMain.handle(IPC.checkForUpdates, () => manager.checkUpdates())
+  ipcMain.handle(IPC.updateDownload, (_e, jobId: string, opts?: { keepOld?: unknown }) =>
+    typeof jobId === 'string'
+      ? manager.update(jobId, { keepOld: opts?.keepOld !== false })
+      : { ok: false, message: 'Unknown download' }
+  )
 
   ipcMain.handle(IPC.getSettings, () => settings.get())
   ipcMain.handle(IPC.setSettings, async (_e, patch: Partial<Settings>) => {

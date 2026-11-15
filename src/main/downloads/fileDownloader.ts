@@ -1,10 +1,10 @@
-import { createHash, type Hash } from 'crypto'
+import { createHash } from 'crypto'
 import { createReadStream, createWriteStream } from 'fs'
-import { mkdir, open, rename, stat, unlink } from 'fs/promises'
+import { mkdir, open, rename, stat, unlink, writeFile } from 'fs/promises'
 import { dirname } from 'path'
 import { Readable, Transform } from 'stream'
 import { pipeline } from 'stream/promises'
-import { DownloadError, isAbortError } from './resolve'
+import { DownloadError, classifyError, isAbortError } from './resolve'
 
 export interface FileDownloadOptions {
   url: string
@@ -18,10 +18,22 @@ export interface FileDownloadOptions {
   /** Absolute bytes written for this file (including pre-existing partial bytes). */
   onProgress: (bytesDone: number) => void
   /**
+   * Bytes of this file that were already on disk — a finished file, or a partial
+   * being resumed — and so never crossed the network. Called just before the
+   * matching onProgress, so callers can keep them out of throughput figures.
+   */
+  onDiskBytes?: (bytes: number) => void
+  /**
    * Called with each network chunk before it is passed on; returns null to let it
    * through now, or a promise that holds it back (see BandwidthLimiter).
    */
   throttle?: (bytes: number, signal: AbortSignal) => Promise<void> | null
+  /**
+   * Progress of the checksum pass over a resumed file once all of it is on disk:
+   * bytes checked so far, of `total`. A file fetched from its first byte is
+   * hashed as it streams and never calls this.
+   */
+  onVerify?: (checked: number, total: number) => void
 }
 
 async function sizeOf(path: string): Promise<number | null> {
@@ -32,11 +44,39 @@ async function sizeOf(path: string): Promise<number | null> {
   }
 }
 
-/** Feed a file's current contents into a hash (priming for resumed downloads). */
-async function hashExisting(path: string, hash: Hash, signal: AbortSignal): Promise<void> {
-  for await (const chunk of createReadStream(path, { signal })) {
+/**
+ * Read size for checksum passes. Electron hashed 64 KiB stream reads (the
+ * default) at 0.38 GB/s and 16 MiB reads at 1.9 GB/s: two minutes versus
+ * twenty seconds for a 40 GB shard.
+ */
+const HASH_READ_BYTES = 16 * 1024 * 1024
+
+/** sha256 of a file on disk, reporting the bytes checked as it goes. */
+async function hashFile(
+  path: string,
+  signal: AbortSignal,
+  onChecked: (bytes: number) => void
+): Promise<string> {
+  const hash = createHash('sha256')
+  let checked = 0
+  for await (const chunk of createReadStream(path, { signal, highWaterMark: HASH_READ_BYTES })) {
     hash.update(chunk as Buffer)
+    checked += (chunk as Buffer).length
+    onChecked(checked)
   }
+  return hash.digest('hex')
+}
+
+/** Check a complete .partial against its expected hash; a mismatch deletes it. */
+async function verifyOnDisk(
+  partialPath: string,
+  size: number,
+  sha256: string,
+  signal: AbortSignal,
+  onVerify: FileDownloadOptions['onVerify']
+): Promise<void> {
+  const digest = await hashFile(partialPath, signal, (checked) => onVerify?.(checked, size))
+  await checksumGuard(partialPath, digest, sha256)
 }
 
 async function checksumGuard(
@@ -65,22 +105,13 @@ async function finalize(partialPath: string, destPath: string): Promise<void> {
   await rename(partialPath, destPath)
 }
 
-function classify(e: unknown): DownloadError {
-  if (e instanceof DownloadError) return e
-  if (e instanceof Error) {
-    const code = (e as NodeJS.ErrnoException).code
-    if (code === 'ENOSPC') return new DownloadError('disk-full', 'Not enough disk space', false)
-    return new DownloadError('network', e.message, true)
-  }
-  return new DownloadError('unknown', String(e), false)
-}
-
 /**
  * Download a single file with Range-based resume and atomic rename.
  * Throws DownloadError; AbortError passes through untouched (pause/cancel).
  */
 export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
-  const { url, destPath, expectedSize, sha256, token, signal, onProgress, throttle } = opts
+  const { url, destPath, expectedSize, sha256, token, signal, onProgress, onDiskBytes, throttle, onVerify } =
+    opts
   const partialPath = `${destPath}.partial`
 
   // Already fully downloaded in a previous run? Size-only on purpose: the file
@@ -88,11 +119,21 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
   // re-hashing 40 GB models on every resume would be pathological.
   const finalSize = await sizeOf(destPath)
   if (finalSize === expectedSize) {
+    onDiskBytes?.(expectedSize)
     onProgress(expectedSize)
     return
   }
 
   await mkdir(dirname(destPath), { recursive: true })
+
+  // An empty file has nothing to fetch, and the finalize branch below assumes a
+  // .partial exists — without this, one empty file failed the whole job.
+  if (expectedSize === 0) {
+    await writeFile(destPath, '')
+    await unlink(partialPath).catch(() => {})
+    onProgress(0)
+    return
+  }
 
   let startAt = (await sizeOf(partialPath)) ?? 0
   if (startAt > expectedSize) {
@@ -100,14 +141,12 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
     startAt = 0
   }
   if (startAt === expectedSize) {
-    // Fully written but not finalized (crash between verify and rename).
-    if (sha256) {
-      const hash = createHash('sha256')
-      await hashExisting(partialPath, hash, signal)
-      await checksumGuard(partialPath, hash.digest('hex'), sha256)
-    }
-    await finalize(partialPath, destPath)
+    // Fully written but never moved into place: stopped during its checksum
+    // pass, or a crash before the rename. Nothing left to fetch.
+    onDiskBytes?.(expectedSize)
     onProgress(expectedSize)
+    if (sha256) await verifyOnDisk(partialPath, expectedSize, sha256, signal, onVerify)
+    await finalize(partialPath, destPath)
     return
   }
 
@@ -122,7 +161,7 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
     res = await fetch(url, { headers, signal, redirect: 'follow' })
   } catch (e) {
     if (isAbortError(e)) throw e
-    throw classify(e)
+    throw classifyError(e)
   }
 
   if (res.status === 401 || res.status === 403) {
@@ -153,20 +192,15 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
     startAt = 0
   }
 
-  // Hash while streaming; on resume, prime with the partial's existing bytes
-  // (a one-time prefix read that briefly delays the network start).
-  const hash = sha256 ? createHash('sha256') : null
-  if (hash && append) {
-    try {
-      await hashExisting(partialPath, hash, signal)
-    } catch (e) {
-      if (isAbortError(e)) throw e
-      await unlink(partialPath).catch(() => {})
-      throw new DownloadError('unknown', 'Could not read partial file, restarting', true)
-    }
-  }
+  // A file fetched from its first byte is hashed as it streams. A resumed one is
+  // checked from disk in a single pass once complete. Hashing its existing part
+  // first left this response unread for minutes (0.4 GB/s over a 39 GB partial);
+  // the CDN dropped the idle connection, and each retry re-hashed it all to move
+  // a few MB, while the UI could only say "Waiting for data".
+  const hash = sha256 && !append ? createHash('sha256') : null
 
   let bytesDone = startAt
+  onDiskBytes?.(startAt)
   onProgress(bytesDone)
   // Holding a chunk here backs the whole pipeline up to the socket, which is
   // what makes a speed cap slow the connection rather than just the disk.
@@ -195,7 +229,7 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
     )
   } catch (e) {
     if (isAbortError(e)) throw e
-    throw classify(e)
+    throw classifyError(e)
   }
 
   const written = await sizeOf(partialPath)
@@ -206,8 +240,9 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
       true
     )
   }
-  if (hash && sha256) {
-    await checksumGuard(partialPath, hash.digest('hex'), sha256)
+  if (sha256) {
+    if (hash) await checksumGuard(partialPath, hash.digest('hex'), sha256)
+    else await verifyOnDisk(partialPath, expectedSize, sha256, signal, onVerify)
   }
   await finalize(partialPath, destPath)
 }

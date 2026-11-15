@@ -38,9 +38,10 @@ const app = await electron.launch({
 try {
   const win = await app.firstWindow()
   await win.waitForSelector('[data-testid="search-input"]', { timeout: 15000 })
-  log('app launched, browse view rendered')
+  log('app launched')
 
-  // Browse view should load real trending models from the HF API.
+  // The app lands on Overview; Browse should load real trending models from the HF API.
+  await win.evaluate(() => window.__hfguiTest.setView('browse'))
   await win.waitForSelector('[data-testid="model-grid"] > button', { timeout: 30000 })
   const cardCount = await win.locator('[data-testid="model-grid"] > button').count()
   if (cardCount < 5) fail(`expected a page of model cards, got ${cardCount}`)

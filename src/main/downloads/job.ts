@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm, rmdir, stat, unlink } from 'fs/promises'
+import { mkdir, readdir, rmdir, stat, unlink } from 'fs/promises'
 import { safeJoin } from '../pathSafety'
 import type {
   DownloadEvent,
@@ -6,10 +6,13 @@ import type {
   DownloadRequest,
   ExoRegistration,
   FileProgress,
-  JobState
+  JobState,
+  UpdateLink
 } from '@shared/types'
 import { downloadFile } from './fileDownloader'
-import { DownloadError, isAbortError, resolveUrl } from './resolve'
+import type { LedgerEntry } from './ledger'
+import { DownloadError, classifyError, isAbortError, resolveUrl } from './resolve'
+import { sizeOf } from './storage'
 
 export interface JobDeps {
   getToken(): string | null
@@ -17,9 +20,17 @@ export interface JobDeps {
   persist(): void
   /** The download-wide speed cap, shared with every other job. */
   throttle(bytes: number, signal: AbortSignal): Promise<void> | null
+  /** Record files this job is about to write, so unfinished data is never lost track of. */
+  track(entries: LedgerEntry[]): void
+  /** They form a finished model now (or were deleted): no longer leftovers-in-waiting. */
+  untrack(paths: string[]): void
+  /** Backoff before each retry in a failure streak; tests shorten it. */
+  retryDelaysMs?: readonly number[]
 }
 
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000]
+/** However much each attempt moves a file forward, one run gives up on it after this many. */
+const MAX_ATTEMPTS_PER_FILE = 50
 const PROGRESS_INTERVAL_MS = 250
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -43,16 +54,25 @@ export class DownloadJob {
   readonly displayName: string
   readonly format: DownloadRequest['format']
   readonly destination: DownloadRequest['destination']
-  readonly jobDir: string
+  /** Moves once, when an update swaps folders with the version it replaces. */
+  jobDir: string
   files: FileProgress[]
   state: JobState = 'queued'
   error: DownloadJobSnapshot['error'] = null
   createdAt: number
   completedAt: number | null = null
   exoRegistration: ExoRegistration | null = null
+  /** Paused by the user rather than by quitting — "Resume on launch" skips these. */
+  pausedByUser = false
+  /** This download is a newer version of another one. */
+  update: UpdateLink | null = null
+  /** A newer version of this model was downloaded; this one is kept alongside. */
+  supersededBy: string | null = null
 
   private deps: JobDeps
   private abortController: AbortController | null = null
+  /** The in-flight run(), so cancel() can wait for the state it causes. */
+  private runPromise: Promise<void> | null = null
   private pauseRequested = false
   private cancelRequested = false
   private deletePartialOnCancel = false
@@ -102,6 +122,9 @@ export class DownloadJob {
     job.createdAt = snap.createdAt
     job.completedAt = snap.completedAt
     job.exoRegistration = snap.exoRegistration ?? null
+    job.pausedByUser = snap.pausedByUser === true
+    job.update = snap.update ? { ...snap.update } : null
+    job.supersededBy = snap.supersededBy ?? null
     return job
   }
 
@@ -133,7 +156,10 @@ export class DownloadJob {
       error: this.error,
       createdAt: this.createdAt,
       completedAt: this.completedAt,
-      exoRegistration: this.exoRegistration ? { ...this.exoRegistration } : null
+      exoRegistration: this.exoRegistration ? { ...this.exoRegistration } : null,
+      pausedByUser: this.pausedByUser,
+      update: this.update ? { ...this.update } : null,
+      supersededBy: this.supersededBy
     }
   }
 
@@ -178,8 +204,37 @@ export class DownloadJob {
     })
   }
 
+  /** Progress of a file's checksum pass: local work, so no speed and no ETA. */
+  private emitVerifying(done: number, total: number): void {
+    const now = Date.now()
+    if (done < total && now - this.lastEmitAt < PROGRESS_INTERVAL_MS) return
+    // Time spent checking isn't network time: the next file's speed starts fresh.
+    this.lastEmitAt = now
+    this.lastEmitBytes = this.bytesDone
+    this.emaBytesPerSec = 0
+    this.deps.emit({
+      type: 'progress',
+      jobId: this.jobId,
+      bytesDone: this.bytesDone,
+      totalBytes: this.totalBytes,
+      bytesPerSec: 0,
+      etaSec: null,
+      currentFile: this.currentFile,
+      verifying: { done, total }
+    })
+  }
+
   /** Runs the whole job; never rejects — terminal state is reflected in `state`. */
-  async run(): Promise<void> {
+  run(): Promise<void> {
+    const running = this.runToEnd()
+    this.runPromise = running
+    void running.finally(() => {
+      if (this.runPromise === running) this.runPromise = null
+    })
+    return running
+  }
+
+  private async runToEnd(): Promise<void> {
     this.abortController = new AbortController()
     this.pauseRequested = false
     const signal = this.abortController.signal
@@ -187,6 +242,7 @@ export class DownloadJob {
     this.lastEmitBytes = 0
     this.emaBytesPerSec = 0
     this.setState('downloading')
+    this.deps.track(this.dataEntries())
 
     try {
       await mkdir(this.jobDir, { recursive: true })
@@ -196,9 +252,12 @@ export class DownloadJob {
         this.currentFile = file.path
         if (file.state !== 'done') file.state = 'active'
 
-        let attempt = 0
+        const delays = this.deps.retryDelaysMs ?? RETRY_DELAYS_MS
+        let attempts = 0
+        let streak = 0 // failed attempts in a row that moved nothing forward
         // downloadFile early-returns when the final file already exists.
         for (;;) {
+          const before = file.bytesDone
           try {
             await downloadFile({
               url: resolveUrl(this.repoId, this.revision, file.path),
@@ -211,15 +270,27 @@ export class DownloadJob {
               onProgress: (bytesDone) => {
                 file.bytesDone = bytesDone
                 this.emitProgress()
-              }
+              },
+              // Bytes already on disk never crossed the network. Shift the speed
+              // sampler's baseline past them, or a file that already exists reads
+              // as a TB/s burst with a 0 s ETA.
+              onDiskBytes: (bytes) => {
+                this.lastEmitBytes += Math.max(0, bytes - file.bytesDone)
+              },
+              onVerify: (done, total) => this.emitVerifying(done, total)
             })
             break
           } catch (e) {
             if (isAbortError(e)) throw e
-            const err = e instanceof DownloadError ? e : new DownloadError('unknown', String(e))
-            if (err.retryable && attempt < RETRY_DELAYS_MS.length) {
-              await sleep(RETRY_DELAYS_MS[attempt], signal)
-              attempt++
+            const err = classifyError(e)
+            attempts++
+            // A dropped connection after real progress is routine over a
+            // multi-hour file, not a failure streak. Only network drops count as
+            // progress: a checksum or size mismatch throws the bytes away.
+            if (err.code === 'network' && file.bytesDone > before) streak = 0
+            if (err.retryable && streak < delays.length && attempts < MAX_ATTEMPTS_PER_FILE) {
+              await sleep(delays[streak], signal)
+              streak++
               continue
             }
             throw err
@@ -241,6 +312,8 @@ export class DownloadJob {
         }
       }
       this.completedAt = Date.now()
+      // A model now, not a leftover-in-waiting.
+      this.deps.untrack(this.dataEntries().map((e) => e.path))
       this.setState('completed')
     } catch (e) {
       if (this.cancelRequested) {
@@ -252,7 +325,7 @@ export class DownloadJob {
         }
         this.setState('paused')
       } else {
-        const err = e instanceof DownloadError ? e : new DownloadError('unknown', String(e))
+        const err = classifyError(e)
         this.error = { code: err.code, message: err.message }
         this.setState('error')
       }
@@ -274,6 +347,7 @@ export class DownloadJob {
   }
 
   prepareResume(): void {
+    this.pausedByUser = false
     this.error = null
     this.cancelRequested = false
     this.pauseRequested = false
@@ -281,11 +355,17 @@ export class DownloadJob {
   }
 
   async cancel(deletePartial: boolean): Promise<void> {
+    // A finished download has nothing left to cancel; relabelling it "Stopped"
+    // would misreport files that are complete on disk.
+    if (this.state === 'completed') return
     this.deletePartialOnCancel = deletePartial
     if (this.isActive) {
       this.cancelRequested = true
       this.abortController?.abort()
-      return // run() finishes the transition
+      // run() finishes the transition. Resolve only once it has, so callers can
+      // chain on the final state — remove-after-cancel ("Undo") relies on it.
+      await this.runPromise
+      return
     }
     if (deletePartial) await this.cleanupPartials()
     this.setState('cancelled')
@@ -309,8 +389,50 @@ export class DownloadJob {
     }
   }
 
-  /** Delete everything this job wrote (used by remove-with-files, not exposed yet). */
-  async deleteAllFiles(): Promise<void> {
-    await rm(this.jobDir, { recursive: true, force: true })
+  /** The files this job writes — each finished file and its .partial — for the ledger. */
+  dataEntries(): LedgerEntry[] {
+    const out: LedgerEntry[] = []
+    for (const f of this.files) {
+      let final: string
+      try {
+        final = this.finalPathFor(f.path)
+      } catch {
+        continue // a tampered snapshot path — never touch it
+      }
+      const base = { jobDir: this.jobDir, baseDir: this.destination.baseDir }
+      out.push({ path: final, ...base }, { path: `${final}.partial`, ...base })
+    }
+    return out
+  }
+
+  /** Bytes this job currently occupies on disk: finished files plus partials. */
+  async bytesOnDisk(): Promise<number> {
+    let total = 0
+    for (const e of this.dataEntries()) total += (await sizeOf(e.path)) ?? 0
+    return total
+  }
+
+  /** Every file present at its expected size — false once moved, deleted or truncated. */
+  async filesIntact(): Promise<boolean> {
+    for (const f of this.files) {
+      let final: string
+      try {
+        final = this.finalPathFor(f.path)
+      } catch {
+        return false
+      }
+      if ((await sizeOf(final)) !== f.size) return false
+    }
+    return true
+  }
+
+  /** After its data was deleted: start over from zero, and say so. */
+  resetProgress(): void {
+    for (const f of this.files) {
+      f.bytesDone = 0
+      f.state = 'pending'
+    }
+    this.deps.emit({ type: 'state', jobId: this.jobId, snapshot: this.snapshot() })
+    this.deps.persist()
   }
 }

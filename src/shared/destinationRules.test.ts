@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canDownloadTo, defaultDestination, destinationRejection } from './destinationRules'
+import { availableDestinations, canDownloadTo, defaultDestination, destinationRejection } from './destinationRules'
 import type { DestinationInfo } from './types'
 
 const info = (
@@ -36,5 +36,30 @@ describe('defaultDestination', () => {
     const noLm = [info('lmstudio', null), info('exo', null), info('custom', '/tmp')]
     expect(defaultDestination('gguf', noLm)!.kind).toBe('custom')
     expect(defaultDestination('gguf', [info('lmstudio', null)])).toBeNull()
+  })
+})
+
+describe('the default chosen by the user', () => {
+  it('wins whenever it can take the format', () => {
+    expect(defaultDestination('gguf', all, 'custom')!.kind).toBe('custom')
+    expect(defaultDestination('mlx', all, 'lmstudio')!.kind).toBe('lmstudio')
+  })
+
+  it('falls back to hfgui’s order when it can’t', () => {
+    // exo runs MLX only; a GGUF goes to the next place that takes it.
+    expect(defaultDestination('gguf', all, 'exo')!.kind).toBe('lmstudio')
+    const noLm = [info('lmstudio', null), info('exo', '/exo'), info('custom', '/tmp')]
+    expect(defaultDestination('gguf', noLm, 'exo')!.kind).toBe('custom')
+    // An app that has since been uninstalled.
+    expect(defaultDestination('gguf', noLm, 'lmstudio')!.kind).toBe('custom')
+  })
+})
+
+describe('availableDestinations', () => {
+  it('offers apps only when they are on this Mac', () => {
+    const kinds = (list: DestinationInfo[]): string[] => availableDestinations(list).map((d) => d.kind)
+    expect(kinds(all)).toEqual(['lmstudio', 'exo', 'custom'])
+    expect(kinds([info('lmstudio', null), info('exo', null), info('custom', null)])).toEqual(['custom'])
+    expect(kinds([info('lmstudio', '/lm'), info('exo', null), info('custom', '/m')])).toEqual(['lmstudio', 'custom'])
   })
 })

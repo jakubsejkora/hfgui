@@ -1,3 +1,4 @@
+import { estimateQ4Bytes } from '@shared/fit'
 import type { ModelFormat, TreeFile } from '@shared/types'
 
 export type SortKey = 'trendingScore' | 'downloads' | 'likes' | 'lastModified'
@@ -15,12 +16,16 @@ export interface ModelSummary {
   tags: string[]
   trendingScore: number | null
   libraryName: string | null
-  /** Aggregate GGUF metadata from the Hub, when the repo contains GGUF files. */
-  ggufTotalFileSize: number | null
-  /** Weight bytes computed from safetensors per-dtype counts, when available. */
-  safetensorsSizeBytes: number | null
-  /** Parameter count from safetensors metadata, when available. */
-  paramCount: number | null
+  /** Parameter count, from GGUF metadata or safetensors, when the Hub knows it. */
+  params: number | null
+  /**
+   * What the user would download: for GGUF the estimated Q4_K_M file (the Hub's
+   * own `gguf.totalFileSize` describes one arbitrary file, often the F16), for
+   * MLX and others the weights.
+   */
+  sizeBytes: number | null
+  /** sizeBytes is an estimate (GGUF quant size, or an MLX bit width read off the name). */
+  sizeEstimated: boolean
   format: ModelFormat
 }
 
@@ -36,6 +41,12 @@ export interface ModelDetail {
   pipelineTag: string | null
   tags: string[]
   format: ModelFormat
+  /** Facts from the same response — each null when the repo doesn't say. */
+  params: number | null
+  contextLength: number | null
+  architecture: string | null
+  license: string | null
+  baseModel: string | null
 }
 
 export interface SearchQuery {
@@ -119,25 +130,55 @@ const DTYPE_BYTES: Record<string, number> = {
   BOOL: 1
 }
 
+export interface MlxQuant {
+  bits: number
+  /** Quantization group size; MLX defaults to 64. */
+  groupSize?: number
+}
+
 /**
- * Total weight bytes from the Hub's safetensors per-dtype element counts.
- * Quantized MLX repos store packed U32 weights plus F16 scales, so the sum
- * matches the real download size. Null when counts are missing or contain an
- * unknown dtype (guessing would silently under-report).
+ * Total weight bytes from the Hub's safetensors per-dtype element counts. Null
+ * when counts are missing or contain an unknown dtype (guessing would silently
+ * under-report).
+ *
+ * For quantized MLX repos the Hub reports the packed weights' *logical* count
+ * under U32 — one per weight, not one per 32-bit word — so they cost
+ * `bits` plus a 16-bit scale and bias per group, not 4 bytes each. Counting
+ * them at 4 bytes made a 2.3 GB 4-bit model read as 16 GB.
  */
 export function safetensorsSizeBytes(
-  parameters: Record<string, number> | null | undefined
+  parameters: Record<string, number> | null | undefined,
+  quant: MlxQuant | null = null
 ): number | null {
   if (!parameters) return null
   const entries = Object.entries(parameters)
   if (entries.length === 0) return null
   let bytes = 0
   for (const [dtype, count] of entries) {
+    if (typeof count !== 'number') return null
+    if (quant && dtype === 'U32') {
+      bytes += (count * (quant.bits + 32 / (quant.groupSize ?? 64))) / 8
+      continue
+    }
     const perElement = DTYPE_BYTES[dtype]
-    if (perElement === undefined || typeof count !== 'number') return null
+    if (perElement === undefined) return null
     bytes += count * perElement
   }
-  return bytes
+  return Math.round(bytes)
+}
+
+/**
+ * MLX quant width from the repo name — mlx-community and most others suffix it
+ * ("-4bit", "-8bit", "-4bit-DWQ", "-mxfp4"). Search results don't carry the
+ * repo's config (expanding it costs ~7x the payload), so the name is the
+ * cheapest reliable signal. Null when the name doesn't say.
+ */
+export function mlxQuantBits(repoId: string): number | null {
+  const name = (repoId.split('/').pop() ?? repoId).toLowerCase()
+  const bits = /(?:^|[-_.])(\d{1,2})[-_]?bits?(?=$|[-_.])/.exec(name)
+  if (bits) return Number(bits[1])
+  if (/(?:^|[-_.])(?:mx|nv)fp4(?=$|[-_.])/.test(name)) return 4
+  return null
 }
 
 function splitRepoId(id: string): { author: string; name: string } {
@@ -151,6 +192,7 @@ function toSummary(raw: any): ModelSummary {
   const { author, name } = splitRepoId(raw.id)
   const tags: string[] = raw.tags ?? []
   const libraryName: string | null = raw.library_name ?? null
+  const format = formatOf(tags, libraryName)
   return {
     id: raw.id,
     author,
@@ -163,10 +205,34 @@ function toSummary(raw: any): ModelSummary {
     tags,
     trendingScore: raw.trendingScore ?? null,
     libraryName,
-    ggufTotalFileSize: raw.gguf?.totalFileSize ?? null,
-    safetensorsSizeBytes: safetensorsSizeBytes(raw.safetensors?.parameters),
-    paramCount: raw.safetensors?.total ?? null,
-    format: formatOf(tags, libraryName)
+    ...sizeFacts(raw, format),
+    format
+  }
+}
+
+function sizeFacts(
+  raw: any,
+  format: ModelFormat
+): Pick<ModelSummary, 'params' | 'sizeBytes' | 'sizeEstimated'> {
+  const ggufParams: number | null = raw.gguf?.total ?? null
+  const stParams: number | null = raw.safetensors?.total ?? null
+  if (format === 'gguf') {
+    return { params: ggufParams, sizeBytes: estimateQ4Bytes(ggufParams), sizeEstimated: true }
+  }
+  const parameters = raw.safetensors?.parameters
+  const hasPacked = !!parameters && typeof parameters.U32 === 'number'
+  if (format === 'mlx' && hasPacked) {
+    const named = mlxQuantBits(raw.id)
+    return {
+      params: stParams,
+      sizeBytes: safetensorsSizeBytes(parameters, { bits: named ?? 4 }),
+      sizeEstimated: true
+    }
+  }
+  return {
+    params: stParams,
+    sizeBytes: safetensorsSizeBytes(parameters),
+    sizeEstimated: false
   }
 }
 
@@ -218,7 +284,25 @@ export async function getModel(repoId: string): Promise<ModelDetail> {
     lastModified: raw.lastModified ?? null,
     pipelineTag: raw.pipeline_tag ?? null,
     tags,
-    format: formatOf(tags, raw.library_name ?? null)
+    format: formatOf(tags, raw.library_name ?? null),
+    ...modelFacts(raw)
+  }
+}
+
+const firstString = (v: unknown): string | null =>
+  typeof v === 'string' && v ? v : Array.isArray(v) && typeof v[0] === 'string' ? v[0] : null
+
+/** License, lineage and shape, read from the model-info response — no extra requests. */
+export function modelFacts(
+  raw: any
+): Pick<ModelDetail, 'params' | 'contextLength' | 'architecture' | 'license' | 'baseModel'> {
+  const licenseTag = (raw.tags ?? []).find((t: unknown) => typeof t === 'string' && t.startsWith('license:'))
+  return {
+    params: raw.gguf?.total ?? raw.safetensors?.total ?? null,
+    contextLength: raw.gguf?.context_length ?? null,
+    architecture: raw.gguf?.architecture ?? raw.config?.model_type ?? null,
+    license: firstString(raw.cardData?.license) ?? (licenseTag ? licenseTag.slice(8) : null),
+    baseModel: firstString(raw.cardData?.base_model)
   }
 }
 

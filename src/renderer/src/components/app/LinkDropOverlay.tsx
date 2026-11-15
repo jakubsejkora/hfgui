@@ -75,14 +75,14 @@ export function LinkDropOverlay() {
   return (
     <div
       data-testid="link-drop-overlay"
-      className="animate-fade-in pointer-events-none fixed inset-0 z-[65] flex items-center justify-center bg-black/45 p-10"
+      className="pointer-events-none fixed inset-0 z-[65] flex animate-in items-center justify-center bg-background/70 p-8 backdrop-blur-sm fade-in-0"
     >
-      <div className="border-accent/50 bg-accent/5 flex h-full w-full flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed">
-        <div className="glass-strong flex h-12 w-12 items-center justify-center rounded-full">
-          <Link2 className="text-accent h-5 w-5" />
+      <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-foreground/40">
+        <div className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg">
+          <Link2 className="size-5" />
         </div>
-        <p className="text-base font-medium text-white">Drop a Hugging Face model link</p>
-        <p className="text-sm text-white/60">It will open here, ready to download.</p>
+        <p className="text-base font-semibold">Drop a Hugging Face model link</p>
+        <p className="text-sm text-muted-foreground">It opens right here, ready to download.</p>
       </div>
     </div>
   )

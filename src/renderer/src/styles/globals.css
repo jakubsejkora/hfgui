@@ -1,4 +1,7 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
 
 /*
  * Inter, latin subset only, resolved out of node_modules by Vite and inlined as
@@ -15,224 +18,175 @@
     format('woff2-variations');
 }
 
-@theme {
-  --color-bg: #08080a;
-  --color-surface: #141417;
-  --color-surface-2: #1b1b20;
-  --color-surface-3: #26262d;
-  --color-inset: #0c0c0f;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-strong: rgba(255, 255, 255, 0.17);
-  --color-text: #f2f2f5;
-  --color-muted: rgba(255, 255, 255, 0.56);
-  --color-faint: rgba(255, 255, 255, 0.34);
-  --color-accent: #ffb340;
-  --color-accent-hover: #ffc470;
-  --color-accent-fg: #1a1205;
-  --color-danger: #ff6b66;
-  --color-success: #3ddc97;
-  --color-warning: #fbbf24;
-  --color-mlx: #7dd3fc;
+/*
+ * Design tokens. shadcn/ui's token set on a neutral (monochrome) scale, plus:
+ *   --success / --warning / --destructive   status, as people read it: green
+ *               all good (and going, when it pulses), amber needs attention,
+ *               red a problem stopped it. Grey is waiting, or the user's doing.
+ *   --brand     the logo's signal red. Not a status colour: red on a running
+ *               download read as an error.
+ * The window frame and sidebar use --sidebar; pages sit on --background in the
+ * inset panel; cards lift off it with --card + border.
+ *
+ * `.dark` is driven from prefers-color-scheme (see main.tsx / useTheme), which
+ * the main process sets from the theme setting via nativeTheme.themeSource.
+ */
+:root {
+  --radius: 0.625rem;
 
-  --radius-sleeve: 22px;
-  --radius-bezel: 16px;
-  --radius-slot: 999px;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.967 0 0);
+  --muted-foreground: oklch(0.52 0 0);
+  --accent: oklch(0.955 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.915 0 0);
+  --input: oklch(0.9 0 0);
+  --ring: oklch(0.708 0 0);
+
+  --brand: oklch(0.6 0.23 28);
+  --brand-foreground: oklch(0.985 0 0);
+  --success: oklch(0.6 0.15 152);
+  --warning: oklch(0.72 0.16 70);
+
+  --sidebar: oklch(0.962 0 0);
+  --sidebar-foreground: oklch(0.205 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.915 0 0);
+  --sidebar-accent-foreground: oklch(0.145 0 0);
+  --sidebar-border: oklch(0.9 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  /* modelArtwork() in src/shared/artwork.ts reads these. */
+  --art-sat: 74%;
+  --art-light: 62%;
+  --art-base-sat: 48%;
+  --art-base-light: 40%;
+
+  color-scheme: light;
+}
+
+.dark {
+  --background: oklch(0.175 0 0);
+  --foreground: oklch(0.975 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.975 0 0);
+  --popover: oklch(0.215 0 0);
+  --popover-foreground: oklch(0.975 0 0);
+  --primary: oklch(0.94 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.255 0 0);
+  --secondary-foreground: oklch(0.975 0 0);
+  --muted: oklch(0.245 0 0);
+  --muted-foreground: oklch(0.68 0 0);
+  --accent: oklch(0.255 0 0);
+  --accent-foreground: oklch(0.975 0 0);
+  --destructive: oklch(0.68 0.2 24);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.556 0 0);
+
+  --brand: oklch(0.665 0.21 28);
+  --brand-foreground: oklch(0.985 0 0);
+  --success: oklch(0.74 0.16 152);
+  --warning: oklch(0.8 0.15 75);
+
+  --sidebar: oklch(0.135 0 0);
+  --sidebar-foreground: oklch(0.86 0 0);
+  --sidebar-primary: oklch(0.94 0 0);
+  --sidebar-primary-foreground: oklch(0.205 0 0);
+  --sidebar-accent: oklch(0.215 0 0);
+  --sidebar-accent-foreground: oklch(0.975 0 0);
+  --sidebar-border: oklch(1 0 0 / 7%);
+  --sidebar-ring: oklch(0.556 0 0);
+
+  --art-sat: 70%;
+  --art-light: 56%;
+  --art-base-sat: 46%;
+  --art-base-light: 24%;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 
   --font-sans:
     'Inter Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'SF Pro Text',
     'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
-
-  --animate-fade-in: fade-in 0.18s ease;
-  --animate-slide-in: slide-in 0.34s cubic-bezier(0.16, 1, 0.3, 1);
-  --animate-pop-in: pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  --animate-dock-in: dock-in 0.32s cubic-bezier(0.16, 1, 0.3, 1);
-  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
-  --animate-glow-drift: glow-drift 28s ease-in-out infinite alternate;
 }
 
-/*
- * Non-@theme design tokens: depth, texture and the generated model artwork.
- * Kept as plain custom properties so `html.light` can swap them wholesale —
- * every rule below reads them through var().
- */
-:root {
-  /* ModelCard avatar hue-derived colors: saturation/lightness per theme. */
-  --avatar-bg-sl: 45% 22%;
-  --avatar-fg-sl: 85% 72%;
-
-  /* modelArtwork() in src/shared/artwork.ts reads these. */
-  --art-sat: 82%;
-  --art-light: 58%;
-  --art-base-sat: 58%;
-  --art-base-light: 18%;
-
-  --edge-highlight: rgba(255, 255, 255, 0.09);
-  --bezel-inner: rgba(0, 0, 0, 0.5);
-
-  --shadow-sleeve:
-    0 16px 36px -14px rgba(0, 0, 0, 0.72), 0 2px 6px rgba(0, 0, 0, 0.36);
-  --shadow-lift:
-    0 28px 60px -20px rgba(0, 0, 0, 0.82), 0 6px 14px rgba(0, 0, 0, 0.42);
-  --shadow-slot:
-    inset 0 2px 8px rgba(0, 0, 0, 0.62), inset 0 1px 1px rgba(0, 0, 0, 0.85);
-  --shadow-float: 0 24px 60px -18px rgba(0, 0, 0, 0.8);
-
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-strong: rgba(255, 255, 255, 0.11);
-
-  --glow-warm: rgba(255, 179, 64, 0.07);
-  --glow-cool: rgba(125, 211, 252, 0.05);
-
-  --grain-opacity: 0.22;
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-
-  --scrim: linear-gradient(to top, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.12) 46%, transparent 100%);
-}
-
-/*
- * Light theme: overrides the @theme design tokens (un-layered, so it wins over
- * @layer theme). The class is mirrored from prefers-color-scheme, which the
- * main process drives via nativeTheme.themeSource.
- */
-html.light {
-  --color-bg: #f5f5f7;
-  --color-surface: #ffffff;
-  --color-surface-2: #f1f1f4;
-  --color-surface-3: #e5e5ea;
-  --color-inset: #ececf0;
-  --color-border: rgba(0, 0, 0, 0.09);
-  --color-border-strong: rgba(0, 0, 0, 0.18);
-  --color-text: #17171b;
-  --color-muted: rgba(0, 0, 0, 0.58);
-  --color-faint: rgba(0, 0, 0, 0.38);
-  --color-accent: #b45309;
-  --color-accent-hover: #92400e;
-  --color-accent-fg: #ffffff;
-  --color-danger: #dc2626;
-  --color-success: #15803d;
-  --color-warning: #a16207;
-  --color-mlx: #0369a1;
-
-  --avatar-bg-sl: 70% 88%;
-  --avatar-fg-sl: 70% 30%;
-
-  /* Artwork stays vivid in light mode — text on top is always white over a scrim. */
-  --art-sat: 78%;
-  --art-light: 60%;
-  --art-base-sat: 52%;
-  --art-base-light: 34%;
-
-  --edge-highlight: rgba(255, 255, 255, 0.9);
-  --bezel-inner: rgba(0, 0, 0, 0.12);
-
-  --shadow-sleeve: 0 10px 26px -12px rgba(16, 16, 24, 0.22), 0 1px 3px rgba(16, 16, 24, 0.1);
-  --shadow-lift: 0 22px 46px -18px rgba(16, 16, 24, 0.3), 0 4px 10px rgba(16, 16, 24, 0.12);
-  --shadow-slot: inset 0 2px 6px rgba(16, 16, 24, 0.12), inset 0 1px 1px rgba(16, 16, 24, 0.08);
-  --shadow-float: 0 22px 50px -16px rgba(16, 16, 24, 0.26);
-
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(0, 0, 0, 0.08);
-  --glass-strong: rgba(255, 255, 255, 0.92);
-
-  --glow-warm: rgba(180, 83, 9, 0.06);
-  --glow-cool: rgba(3, 105, 161, 0.05);
-
-  --grain-opacity: 0.1;
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-  to {
-    opacity: 1;
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-sidebar font-sans text-foreground antialiased;
+    overscroll-behavior: none;
+    user-select: none;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  input,
+  textarea,
+  .selectable {
+    user-select: text;
   }
 }
 
-@keyframes slide-in {
-  from {
-    transform: translateX(40px);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
-
-@keyframes pop-in {
-  from {
-    transform: translateY(6px) scale(0.98);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
-
-@keyframes dock-in {
-  from {
-    transform: translateY(100%);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
-
-@keyframes shimmer {
-  0%,
-  100% {
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 0.85;
-  }
-}
-
-@keyframes glow-drift {
-  from {
-    transform: scale(1) translate3d(0, 0, 0);
-  }
-  to {
-    transform: scale(1.18) translate3d(-3%, 2%, 0);
-  }
-}
-
-@keyframes pulse-ring {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-success) 45%, transparent);
-  }
-  70% {
-    box-shadow: 0 0 0 6px transparent;
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-}
-
-html,
-body,
-#root {
-  height: 100%;
-}
-
-body {
-  @apply bg-bg text-text font-sans antialiased;
-  overscroll-behavior: none;
-  user-select: none;
-  letter-spacing: -0.01em;
-}
-
-input,
-textarea,
-.selectable {
-  user-select: text;
-}
+/* ------------------------------------------------------------ window chrome */
 
 .drag-region {
   -webkit-app-region: drag;
@@ -243,145 +197,103 @@ textarea,
 }
 
 /*
- * Component classes live in the components layer so Tailwind utilities can
- * override them. Unlayered, they would beat every utility regardless of
- * specificity — `slot` would pin a checked switch's track to the inset colour,
- * and `bezel` would override every rounded-* on an artwork tile.
+ * Anything interactive inside a drag region must opt out, or clicks become
+ * window drags. And every Radix portal (popovers, menus, dialogs, the sheet and
+ * their overlays) is appended to <body>, outside the regions — but can sit on
+ * top of one, so it has to carve itself out explicitly too.
  */
+.drag-region
+  :where(
+    button,
+    a,
+    input,
+    select,
+    textarea,
+    label,
+    summary,
+    [role='button'],
+    [role='combobox'],
+    [role='switch'],
+    [role='slider'],
+    [role='tab'],
+    [role='radio'],
+    [role='checkbox'],
+    [role='menuitem'],
+    [tabindex]:not([tabindex='-1']),
+    [data-no-drag]
+  ),
+[data-radix-popper-content-wrapper],
+[role='dialog'],
+[role='alertdialog'],
+[role='menu'],
+[role='listbox'],
+[data-slot$='-overlay'],
+[data-slot='toaster'],
+[data-testid='link-drop-overlay'] {
+  -webkit-app-region: no-drag;
+}
+
+/* ----------------------------------------------------------------- motion */
+
+/*
+ * Only transform and opacity, in four steps. The first version animated
+ * box-shadow, so Chromium repainted every frame while anything downloaded
+ * (~3% GPU and 9% renderer CPU, each frame passed on to WindowServer and to
+ * screen sharing). A smooth transform/opacity pulse stops the repaints but
+ * still composites 60–120 frames a second (~2% GPU); four steps per beat
+ * cost about what a static dot does (~0.35%) — and a ring that grows in
+ * four quantized steps suits a 2-bit sphere.
+ */
+@keyframes live-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(2.7);
+    opacity: 0;
+  }
+}
+
+@keyframes indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
 @layer components {
-  /* ---------------------------------------------------------------- surfaces */
-
-  /**
-   * The "sleeve": an outer shell with a hairline top highlight and a soft drop
-   * shadow. Pair with `.bezel` on the inner panel for the nested-radius look.
-   */
-  .sleeve {
-    background: linear-gradient(180deg, var(--color-surface-2) 0%, var(--color-surface) 100%);
-    border-radius: var(--radius-sleeve);
-    box-shadow: var(--shadow-sleeve), inset 0 1px 0 var(--edge-highlight);
-  }
-
-  .sleeve-interactive {
-    transition:
-      transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-      box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .sleeve-interactive:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lift), inset 0 1px 0 var(--edge-highlight);
-  }
-
-  .sleeve-interactive:active {
-    transform: translateY(0) scale(0.995);
-  }
-
-  /** The recessed inner panel that holds artwork. */
-  .bezel {
+  /** The "live" dot: running downloads and the in-progress count. */
+  .live-dot {
     position: relative;
-    overflow: hidden;
-    border-radius: var(--radius-bezel);
-    box-shadow:
-      inset 0 0 0 1px var(--bezel-inner),
-      inset 0 1px 2px rgba(0, 0, 0, 0.3);
   }
-
-  /** The deeply inset "receiver slot" — dock, quant rows, progress tracks. */
-  .slot {
-    background: var(--color-inset);
-    border-radius: var(--radius-bezel);
-    box-shadow: var(--shadow-slot);
-  }
-
-  .glass {
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    backdrop-filter: blur(14px) saturate(150%);
-    -webkit-backdrop-filter: blur(14px) saturate(150%);
-  }
-
-  /**
-   * Glass for elements sitting on top of artwork. Artwork is deliberately the one
-   * surface that does not change with the theme, so this must not either — a
-   * light-theme glass here would put white text on a near-white pill.
-   */
-  .glass-on-art {
-    background: rgb(0 0 0 / 0.3);
-    border: 1px solid rgb(255 255 255 / 0.24);
-    color: #fff;
-    backdrop-filter: blur(12px) saturate(150%);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
-  }
-
-  .glass-on-art-strong {
-    background: rgb(255 255 255 / 0.22);
-    border: 1px solid rgb(255 255 255 / 0.3);
-    color: #fff;
-    backdrop-filter: blur(12px) saturate(150%);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
-  }
-
-  .glass-strong {
-    background: var(--glass-strong);
-    border: 1px solid var(--glass-border);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-  }
-
-  /* ---------------------------------------------------------------- texture */
-
-  /**
-   * Film grain. One shared data: URI, decoded once and tiled, so adding it to a
-   * grid of cards costs a composite rather than a texture each.
-   */
-  .grain::after {
+  .live-dot::after {
     content: '';
     position: absolute;
     inset: 0;
-    pointer-events: none;
     border-radius: inherit;
-    background-image: var(--grain);
-    background-size: 160px 160px;
-    opacity: var(--grain-opacity);
-    mix-blend-mode: overlay;
+    background: inherit;
+    animation: live-ring 1.8s steps(4, end) infinite;
+  }
+  /* Nobody is looking: hfgui isn't the focused window (minimized, behind
+     others, or another app in use). Chromium keeps drawing a minimized
+     Electron window, so stop the pulse here rather than rely on it. */
+  [data-window-blurred] .live-dot::after {
+    animation: none;
+    opacity: 0;
   }
 
-  /** Darkens the bottom of artwork so white text stays legible in both themes. */
-  .scrim::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: var(--scrim);
-  }
-
-  .vignette::after {
-    box-shadow: inset 0 0 40px 6px rgba(0, 0, 0, 0.28);
-  }
-
-  /** Ambient room light behind the whole app. */
-  .ambient {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background:
-      radial-gradient(62% 46% at 50% -10%, var(--glow-warm), transparent 72%),
-      radial-gradient(44% 34% at 88% 108%, var(--glow-cool), transparent 72%);
-  }
-
-  .tnum {
-    font-variant-numeric: tabular-nums;
-  }
-
-  .pulse-dot {
-    animation: pulse-ring 2.2s ease-out infinite;
+  .progress-indeterminate {
+    animation: indeterminate 1.3s ease-in-out infinite;
   }
 }
 
 /*
- * One switch for everything above. The grid already avoids animation for
- * performance; this covers the hero drift, the dock and the status pulse.
+ * One switch for everything above: the live dot, skeleton pulses, Radix
+ * enter/exit animations and the sidebar slide.
  */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -401,14 +313,14 @@ textarea,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
+  background: color-mix(in oklab, var(--foreground) 16%, transparent);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-muted);
+  background: color-mix(in oklab, var(--foreground) 32%, transparent);
   border: 2px solid transparent;
   background-clip: padding-box;
 }

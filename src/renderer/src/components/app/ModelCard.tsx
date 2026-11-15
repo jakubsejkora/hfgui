@@ -1,98 +1,68 @@
-import { Clock, Download, Heart, Lock } from 'lucide-react'
-import { useRef } from 'react'
-import { formatBytes, formatCount, relativeTime } from '@shared/format'
 import type { ModelSummary } from '@/lib/hfApi'
-import { MODEL_DRAG_MIME, useDragStore } from '@/lib/dragStore'
-import { Badge } from '@/components/ui/badge'
-import { Artwork } from '@/components/ui/sleeve'
+import { useModelDragSource } from '@/lib/useModelDragSource'
+import { cn } from '@/lib/utils'
+import { FormatBadge, GatedBadge } from './badges'
+import { ModelAvatar } from './ModelAvatar'
+import { ModelContextMenu } from './ModelMenus'
+import { LibraryPill, ModelStats, SizeLabel } from './modelFacts'
 
-function FormatBadge({ format }: { format: ModelSummary['format'] }) {
-  if (format === 'gguf') return <Badge variant="accent">GGUF</Badge>
-  if (format === 'mlx') return <Badge variant="mlx">MLX</Badge>
-  return null
-}
-
+/**
+ * A search result. The root stays a draggable <button> — the e2e drivers read
+ * `[data-testid="model-grid"] > button` and drag the first one.
+ */
 export function ModelCard({ model, onClick }: { model: ModelSummary; onClick(): void }) {
-  const sizeBytes = model.ggufTotalFileSize ?? model.safetensorsSizeBytes
-  const beginDrag = useDragStore((s) => s.begin)
-  const endDrag = useDragStore((s) => s.end)
-  // Chromium can still fire a click after a drag; without this, dropping a card
-  // on a destination would also open the detail sheet on top of it.
-  const dragged = useRef(false)
+  const { dragProps, wasDragged } = useModelDragSource(model)
 
   return (
-    <button
-      onClick={() => {
-        if (dragged.current) return
-        onClick()
-      }}
-      draggable
-      data-repo-id={model.id}
-      onDragStart={(e) => {
-        dragged.current = true
-        const payload = { repoId: model.id, name: model.name, format: model.format }
-        e.dataTransfer.effectAllowed = 'copy'
-        e.dataTransfer.setData(MODEL_DRAG_MIME, JSON.stringify(payload))
-        // Bonus: dragging a card into any other app yields its Hub link.
-        e.dataTransfer.setData('text/plain', `https://huggingface.co/${model.id}`)
-        beginDrag(payload)
-      }}
-      onDragEnd={() => {
-        endDrag()
-        setTimeout(() => {
-          dragged.current = false
-        }, 0)
-      }}
-      className="sleeve sleeve-interactive no-drag flex w-full cursor-pointer items-center gap-3 p-2 text-left"
-    >
-      <Artwork repoId={model.id} className="h-[68px] w-[68px] rounded-[15px]">
-        <div className="scrim relative flex h-full flex-col justify-end p-2">
-          <span
-            className="tnum relative z-[1] text-[11px] font-semibold text-white"
-            style={{ textShadow: '0 1px 3px rgb(0 0 0 / 0.55)' }}
-          >
-            {sizeBytes != null
-              ? formatBytes(sizeBytes)
-              : model.paramCount
-                ? `${formatCount(model.paramCount)}p`
-                : ''}
-          </span>
-        </div>
-      </Artwork>
-
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-0.5 pr-1.5">
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="text-text truncate text-[13px] leading-snug font-semibold">
-              {model.name}
-            </div>
-            <div className="text-muted truncate text-xs">{model.author}</div>
+    <ModelContextMenu model={model}>
+      <button
+        type="button"
+        onClick={() => {
+          if (!wasDragged()) onClick()
+        }}
+        {...dragProps}
+        data-repo-id={model.id}
+        className={cn(
+          'group flex w-full cursor-pointer flex-col gap-3 rounded-xl border bg-card p-4 text-left text-card-foreground shadow-xs',
+          'transition-[border-color,box-shadow] duration-150 hover:border-foreground/20 hover:shadow-md',
+          'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
+          'data-[state=open]:border-foreground/20'
+        )}
+      >
+        <div className="flex w-full items-start gap-3">
+          <ModelAvatar repoId={model.id} size="md" />
+          <div className="min-w-0 flex-1 pt-0.5">
+            <div className="truncate text-sm leading-tight font-semibold">{model.name}</div>
+            <div className="mt-1 truncate text-xs text-muted-foreground">{model.author}</div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {model.gated !== false && (
-              <Badge variant="warning">
-                <Lock className="h-3 w-3" /> gated
-              </Badge>
-            )}
+            <LibraryPill repoId={model.id} />
+            {model.gated !== false && <GatedBadge />}
             <FormatBadge format={model.format} />
           </div>
         </div>
-
-        <div className="text-muted tnum flex w-full items-center gap-3 text-xs">
-          <span className="flex items-center gap-1">
-            <Download className="h-3 w-3" />
-            {formatCount(model.downloads)}
-          </span>
-          <span className="flex items-center gap-1">
-            <Heart className="h-3 w-3" />
-            {formatCount(model.likes)}
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {relativeTime(model.lastModified)}
+        <div className="flex w-full items-center gap-3 text-xs text-muted-foreground tabular-nums">
+          <ModelStats model={model} />
+          <span className="ml-auto flex min-w-0">
+            <SizeLabel model={model} />
           </span>
         </div>
+      </button>
+    </ModelContextMenu>
+  )
+}
+
+export function ModelCardSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs">
+      <div className="flex items-start gap-3">
+        <div className="size-9 animate-pulse rounded-lg bg-muted" />
+        <div className="flex-1 space-y-2 pt-0.5">
+          <div className="h-3.5 w-2/3 animate-pulse rounded bg-muted" />
+          <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
+        </div>
       </div>
-    </button>
+      <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+    </div>
   )
 }
