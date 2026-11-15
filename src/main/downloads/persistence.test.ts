@@ -44,7 +44,7 @@ describe('restoreSnapshot', () => {
   })
 
   it('keeps the link between a model’s versions', () => {
-    const update = { of: 'job_old', fromRevision: 'abc', pendingMove: null }
+    const update = { of: 'job_old', fromRevision: 'abc', pendingMove: null, keepOld: true, aside: null, stage: null }
     expect(restoreSnapshot({ ...snapshot(), update, supersededBy: 'job_newer' })).toMatchObject({
       update,
       supersededBy: 'job_newer'

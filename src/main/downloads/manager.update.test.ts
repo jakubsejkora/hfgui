@@ -17,15 +17,18 @@ vi.mock('./resolve', async (importOriginal) => {
   }
 })
 
-import { DownloadManager } from './manager'
+import { DownloadManager, SMALL_JOB_BYTES, pickJobsToStart } from './manager'
 
 const OLD = '1d4bf0f'.padEnd(40, '0')
 const NEW = '3756181'.padEnd(40, '0')
 const WEIGHTS = Buffer.alloc(256 * 1024, 7)
+const Q8 = Buffer.alloc(64 * 1024, 8)
+const Q4_OLD = Buffer.alloc(32 * 1024, 4)
+const Q4_NEW = Buffer.alloc(33 * 1024, 5) // re-quantized
 const sha256 = (b: Buffer | string): string => createHash('sha256').update(b).digest('hex')
 const gitOid = (s: string): string => createHash('sha1').update(`blob ${Buffer.byteLength(s)}\0`).update(s).digest('hex')
 
-// The repo as it is now on the "Hub": a new chat template and README, same weights and config.
+// org/model as it is now on the "Hub": a new chat template and README, same weights and config.
 const NOW: Record<string, string> = {
   'chat_template.jinja': '{{ new template }}',
   'config.json': '{"layers": 4}',
@@ -41,25 +44,31 @@ let base: string
 beforeAll(async () => {
   http = createServer((req, res) => {
     const url = new URL(req.url!, 'http://x')
-    if (url.pathname === '/api/models/org/model') {
-      res.end(JSON.stringify({ sha: NEW, lastModified: '2026-11-07T10:00:00.000Z' }))
-    } else if (url.pathname === `/api/models/org/model/tree/${NEW}`) {
-      res.end(
-        JSON.stringify([
-          { type: 'file', path: 'model.safetensors', size: WEIGHTS.length, oid: 'ptr', lfs: { oid: sha256(WEIGHTS) } },
-          ...Object.entries(NOW).map(([path, text]) => ({ type: 'file', path, size: Buffer.byteLength(text), oid: gitOid(text) }))
-        ])
-      )
-    } else if (url.pathname.startsWith(`/resolve/org/model/${NEW}/`)) {
-      const path = url.pathname.slice(`/resolve/org/model/${NEW}/`.length)
-      fetched.push(path)
-      const body = path === 'model.safetensors' ? WEIGHTS : Buffer.from(NOW[path])
-      res.writeHead(200, { 'Content-Length': String(body.length) })
-      res.end(body)
-    } else {
-      res.writeHead(404)
-      res.end()
+    const json = (body: unknown): void => void res.end(JSON.stringify(body))
+    if (url.pathname === '/api/models/org/model' || url.pathname === '/api/models/org/model-GGUF') {
+      return json({ sha: NEW, lastModified: '2026-11-07T10:00:00.000Z' })
     }
+    if (url.pathname === `/api/models/org/model/tree/${NEW}`) {
+      return json([
+        { type: 'file', path: 'model.safetensors', size: WEIGHTS.length, oid: 'ptr', lfs: { oid: sha256(WEIGHTS) } },
+        ...Object.entries(NOW).map(([path, text]) => ({ type: 'file', path, size: Buffer.byteLength(text), oid: gitOid(text) }))
+      ])
+    }
+    if (url.pathname === `/api/models/org/model-GGUF/tree/${NEW}`) {
+      return json([
+        { type: 'file', path: 'm-Q4_K_M.gguf', size: Q4_NEW.length, oid: 'p4', lfs: { oid: sha256(Q4_NEW) } },
+        { type: 'file', path: 'm-Q8_0.gguf', size: Q8.length, oid: 'p8', lfs: { oid: sha256(Q8) } }
+      ])
+    }
+    const m = url.pathname.match(new RegExp(`^/resolve/(org/[^/]+)/${NEW}/(.+)$`))
+    if (m) {
+      fetched.push(m[2])
+      const body = m[2] === 'model.safetensors' ? WEIGHTS : m[2] === 'm-Q4_K_M.gguf' ? Q4_NEW : Buffer.from(NOW[m[2]])
+      res.writeHead(200, { 'Content-Length': String(body.length) })
+      return void res.end(body)
+    }
+    res.writeHead(404)
+    res.end()
   })
   await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve))
   server.baseUrl = `http://127.0.0.1:${(http.address() as AddressInfo).port}`
@@ -80,39 +89,49 @@ afterEach(async () => {
   await rm(base, { recursive: true, force: true })
 })
 
-/** The model as downloaded before the update, in base/org/model. */
-async function seedDownloaded(dir = join(base, 'org', 'model'), revision = OLD, files = BEFORE): Promise<DownloadJobSnapshot> {
+type Files = Record<string, string | Buffer>
+
+/** A finished download of `repoId` with these files, written into `dir`. */
+async function seed(
+  dir: string,
+  files: Files,
+  over: Partial<DownloadJobSnapshot> & { repoId?: string } = {}
+): Promise<DownloadJobSnapshot> {
   await mkdir(dir, { recursive: true })
-  await writeFile(join(dir, 'model.safetensors'), WEIGHTS)
-  for (const [path, text] of Object.entries(files)) await writeFile(join(dir, path), text)
-  const list = [
-    { path: 'model.safetensors', size: WEIGHTS.length, sha256: sha256(WEIGHTS), bytesDone: WEIGHTS.length, state: 'done' as const },
-    ...Object.entries(files).map(([path, text]) => ({
+  const list = []
+  for (const [path, body] of Object.entries(files)) {
+    await writeFile(join(dir, path), body)
+    const bytes = Buffer.isBuffer(body) ? body : Buffer.from(body)
+    list.push({
       path,
-      size: Buffer.byteLength(text),
-      sha256: null,
-      bytesDone: Buffer.byteLength(text),
+      size: bytes.length,
+      sha256: Buffer.isBuffer(body) ? sha256(body) : null,
+      bytesDone: bytes.length,
       state: 'done' as const
-    }))
-  ]
+    })
+  }
+  const total = list.reduce((s, f) => s + f.size, 0)
   return {
-    jobId: `job_${revision.slice(0, 7)}`,
+    jobId: `job_${Math.random().toString(36).slice(2, 8)}`,
     repoId: 'org/model',
-    revision,
+    revision: OLD,
     displayName: 'model',
     format: 'other',
     destination: { kind: 'custom', baseDir: base },
     jobDir: dir,
     files: list,
     state: 'completed',
-    bytesDone: list.reduce((s, f) => s + f.size, 0),
-    totalBytes: list.reduce((s, f) => s + f.size, 0),
+    bytesDone: total,
+    totalBytes: total,
     error: null,
     createdAt: 1,
     completedAt: 2,
-    exoRegistration: null
+    exoRegistration: null,
+    ...over
   }
 }
+
+const modelFiles = (text: Record<string, string>): Files => ({ 'model.safetensors': WEIGHTS, ...text })
 
 async function start(snaps: DownloadJobSnapshot[]): Promise<DownloadManager> {
   await writeFile(join(userDataDir, 'downloads.json'), JSON.stringify(snaps))
@@ -140,14 +159,15 @@ async function until(check: () => boolean, ms = 5000): Promise<void> {
   }
 }
 
+const done = (mgr: DownloadManager) => () => mgr.list().some((j) => j.update && j.update.pendingMove === null)
 const text = (p: string): Promise<string> => readFile(p, 'utf8')
 const exists = (p: string): Promise<boolean> => stat(p).then(() => true, () => false)
 
 describe('updates', () => {
   it('finds what changed upstream, file by file', async () => {
-    const mgr = await start([await seedDownloaded()])
-    const updates = await mgr.checkUpdates()
-    expect(updates[`job_1d4bf0f`]).toMatchObject({
+    const old = await seed(join(base, 'org', 'model'), modelFiles(BEFORE))
+    const mgr = await start([old])
+    expect((await mgr.checkUpdates())[old.jobId]).toMatchObject({
       status: 'available',
       revision: NEW,
       changed: ['chat_template.jinja'],
@@ -156,26 +176,25 @@ describe('updates', () => {
     await mgr.shutdown()
   })
 
-  it('downloads only what changed, takes over the folder, and keeps the old version beside it', async () => {
-    const mgr = await start([await seedDownloaded()])
-    expect(await mgr.update('job_1d4bf0f')).toEqual({ ok: true })
-    await until(() => mgr.list().some((j) => j.update && j.update.pendingMove === null))
-
-    // Only the two changed files crossed the network; weights and config were shared.
-    expect(fetched.sort()).toEqual(['README.md', 'chat_template.jinja'])
+  it('keeps both: fetches only what changed, moves in, and keeps the old version beside it', async () => {
     const canonical = join(base, 'org', 'model')
+    const old = await seed(canonical, modelFiles(BEFORE))
+    const mgr = await start([old])
+    expect(await mgr.update(old.jobId, { keepOld: true })).toEqual({ ok: true })
+    await until(done(mgr))
+
+    expect(fetched.sort()).toEqual(['README.md', 'chat_template.jinja'])
     const aside = join(base, 'org', 'model@1d4bf0f')
     expect(await text(join(canonical, 'chat_template.jinja'))).toBe(NOW['chat_template.jinja'])
     expect(await text(join(aside, 'chat_template.jinja'))).toBe(BEFORE['chat_template.jinja'])
     expect(await readFile(join(canonical, 'model.safetensors'))).toEqual(WEIGHTS)
     expect(await readFile(join(aside, 'model.safetensors'))).toEqual(WEIGHTS)
+    expect(await exists(join(base, 'org', 'model@3756181'))).toBe(false) // the staging folder is gone
 
     const jobs = mgr.list()
     const fresh = jobs.find((j) => j.revision === NEW)!
-    const old = jobs.find((j) => j.revision === OLD)!
     expect(fresh).toMatchObject({ state: 'completed', jobDir: canonical, update: { of: old.jobId, pendingMove: null } })
-    expect(old).toMatchObject({ state: 'completed', jobDir: aside, supersededBy: fresh.jobId })
-    // The old version is no longer offered an update; the new one is current.
+    expect(jobs.find((j) => j.jobId === old.jobId)).toMatchObject({ jobDir: aside, supersededBy: fresh.jobId })
     const updates = await mgr.checkUpdates()
     expect(updates[fresh.jobId]).toMatchObject({ status: 'current' })
     expect(updates[old.jobId]).toBeUndefined()
@@ -187,22 +206,116 @@ describe('updates', () => {
     await mgr.shutdown()
   })
 
-  it('finishes a folder swap that a stop interrupted halfway', async () => {
-    // State after the first rename (old version moved aside) but before the
-    // second, with the old record not yet saved: it still names the folder.
-    const aside = join(base, 'org', 'model@1d4bf0f')
-    const staging = join(base, 'org', 'model@3756181')
-    const old = await seedDownloaded(aside)
-    old.jobDir = join(base, 'org', 'model')
-    const fresh = await seedDownloaded(staging, NEW, NOW)
-    fresh.jobId = 'job_new'
-    fresh.update = { of: old.jobId, fromRevision: OLD, pendingMove: join(base, 'org', 'model') }
+  it('replaces: the new version takes the folder and the old one is gone', async () => {
+    const canonical = join(base, 'org', 'model')
+    const old = await seed(canonical, modelFiles(BEFORE))
+    const mgr = await start([old])
+    expect(await mgr.update(old.jobId, { keepOld: false })).toEqual({ ok: true })
+    await until(done(mgr))
+
+    expect(await text(join(canonical, 'chat_template.jinja'))).toBe(NOW['chat_template.jinja'])
+    expect(await readFile(join(canonical, 'model.safetensors'))).toEqual(WEIGHTS)
+    expect(await exists(join(base, 'org', 'model@1d4bf0f'))).toBe(false)
+    expect(mgr.list().map((j) => j.revision)).toEqual([NEW])
+    await mgr.shutdown()
+  })
+
+  it('updates one GGUF size without touching another in the same folder', async () => {
+    const folder = join(base, 'org', 'model-GGUF')
+    const q4 = await seed(folder, { 'm-Q4_K_M.gguf': Q4_OLD }, { repoId: 'org/model-GGUF', format: 'gguf', createdAt: 1 })
+    const q8 = await seed(folder, { 'm-Q8_0.gguf': Q8 }, { repoId: 'org/model-GGUF', format: 'gguf', createdAt: 2 })
+    const mgr = await start([q4, q8])
+    expect(await mgr.update(q4.jobId, { keepOld: true })).toEqual({ ok: true })
+    await until(done(mgr))
+
+    expect(fetched).toEqual(['m-Q4_K_M.gguf'])
+    expect(await readFile(join(folder, 'm-Q4_K_M.gguf'))).toEqual(Q4_NEW)
+    expect(await readFile(join(folder, 'm-Q8_0.gguf'))).toEqual(Q8) // untouched, still where its record says
+    expect(await readFile(join(folder + '@1d4bf0f', 'm-Q4_K_M.gguf'))).toEqual(Q4_OLD)
+    expect(await exists(join(folder + '@1d4bf0f', 'm-Q8_0.gguf'))).toBe(false)
+    expect((await mgr.storageReport()).missing).toEqual([])
+    await mgr.shutdown()
+  })
+
+  it('starts one update however fast the button is clicked', async () => {
+    const old = await seed(join(base, 'org', 'model'), modelFiles(BEFORE))
+    const mgr = await start([old])
+    const results = await Promise.all([1, 2, 3, 4].map(() => mgr.update(old.jobId, { keepOld: true })))
+    expect(results.filter((r) => r.ok)).toHaveLength(1)
+    await until(done(mgr))
+    expect(mgr.list().filter((j) => j.update)).toHaveLength(1)
+    await mgr.shutdown()
+  })
+
+  it('drops duplicate updates left by earlier versions, keeping the first', async () => {
+    const canonical = join(base, 'org', 'model')
+    const old = await seed(canonical, modelFiles(BEFORE))
+    const pending = (n: number) => ({
+      jobId: `job_dupe_${n}`,
+      revision: NEW,
+      state: 'queued' as const,
+      createdAt: 10 + n,
+      completedAt: null,
+      update: { of: old.jobId, fromRevision: OLD, pendingMove: canonical }
+    })
+    const dupes = await Promise.all(
+      [1, 2, 3].map(async (n) => seed(`${canonical}@3756181${n > 1 ? `-${n}` : ''}`, modelFiles(NOW), pending(n)))
+    )
+    const mgr = await start([old, ...dupes])
+    const updates = mgr.list().filter((j) => j.update)
+    expect(updates.map((j) => j.jobId)).toEqual(['job_dupe_1'])
+    expect(await exists(`${canonical}@3756181-2`)).toBe(false)
+    expect(await exists(`${canonical}@3756181-3`)).toBe(false)
+    // Restored as paused (auto-resume is off here); the one left finishes once resumed.
+    await mgr.resume('job_dupe_1')
+    await until(done(mgr))
+    expect(await text(join(canonical, 'chat_template.jinja'))).toBe(NOW['chat_template.jinja'])
+    await mgr.shutdown()
+  })
+
+  it('finishes moving in after a stop part-way through', async () => {
+    // Stopped mid-way through moving the old files aside: one already moved.
+    const canonical = join(base, 'org', 'model')
+    const aside = `${canonical}@1d4bf0f`
+    const staging = `${canonical}@3756181`
+    const old = await seed(canonical, modelFiles(BEFORE))
+    await mkdir(aside, { recursive: true })
+    await writeFile(join(aside, 'README.md'), BEFORE['README.md'])
+    await rm(join(canonical, 'README.md'))
+    const fresh = await seed(staging, modelFiles(NOW), {
+      jobId: 'job_new',
+      revision: NEW,
+      update: { of: old.jobId, fromRevision: OLD, pendingMove: canonical, keepOld: true, aside, stage: 'aside' }
+    })
 
     const mgr = await start([old, fresh])
     const jobs = mgr.list()
-    expect(jobs.find((j) => j.jobId === 'job_new')).toMatchObject({ jobDir: join(base, 'org', 'model') })
+    expect(jobs.find((j) => j.jobId === 'job_new')).toMatchObject({ jobDir: canonical, update: { pendingMove: null } })
     expect(jobs.find((j) => j.jobId === old.jobId)).toMatchObject({ jobDir: aside, supersededBy: 'job_new' })
-    expect(await text(join(base, 'org', 'model', 'chat_template.jinja'))).toBe(NOW['chat_template.jinja'])
+    for (const [path, body] of Object.entries(NOW)) expect(await text(join(canonical, path))).toBe(body)
+    for (const [path, body] of Object.entries(BEFORE)) expect(await text(join(aside, path))).toBe(body)
+    expect(await exists(staging)).toBe(false)
     await mgr.shutdown()
+  })
+})
+
+describe('pickJobsToStart', () => {
+  const job = (state: string, left: number, createdAt: number) => ({
+    state: state as 'queued',
+    isActive: state === 'downloading',
+    totalBytes: left,
+    bytesDone: 0,
+    createdAt
+  })
+  const BIG = 50e9
+
+  it('lets small jobs past a full queue, and keeps big ones to the limit', () => {
+    const running = [job('downloading', BIG, 1), job('downloading', BIG, 2)]
+    const tiny = job('queued', 80 * 1024, 3)
+    const big = job('queued', BIG, 4)
+    expect(pickJobsToStart([...running, big, tiny], 2)).toEqual([tiny])
+    expect(pickJobsToStart([running[0], big, tiny], 2)).toEqual([tiny, big]) // oldest first
+    expect(pickJobsToStart([job('queued', SMALL_JOB_BYTES + 1, 1), job('queued', BIG, 2)], 1)).toHaveLength(1)
+    expect(pickJobsToStart([tiny], 0)).toEqual([])
   })
 })

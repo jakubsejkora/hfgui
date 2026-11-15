@@ -67,8 +67,8 @@ export interface HfguiApi {
   getUpdates(): Promise<Record<string, UpdateStatus>>
   /** Ask Hugging Face now. */
   checkForUpdates(): Promise<Record<string, UpdateStatus>>
-  /** Download the newer version of a finished download, keeping the old one. */
-  updateDownload(jobId: string): Promise<ActionResult>
+  /** Download the newer version of a finished download, keeping the old one beside it or replacing it. */
+  updateDownload(jobId: string, opts: { keepOld: boolean }): Promise<ActionResult>
   /** Returns an unsubscribe function. */
   onDownloadEvent(cb: (e: DownloadEvent) => void): () => void
 

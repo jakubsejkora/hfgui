@@ -26,7 +26,7 @@ export function announceTransition(previous: JobState | undefined, job: Download
     const reveal = job.files.length === 1 ? `${dir}/${job.files[0].path}` : dir
     toast('success', job.update ? 'Update finished' : 'Download finished', {
       description: job.update
-        ? `${job.displayName} is up to date. The previous version is kept beside it.`
+        ? `${job.displayName} is up to date.${job.update.keepOld === false ? '' : ' The previous version is kept beside it.'}`
         : `${job.displayName} is ready in ${WHERE[job.destination.kind]}.`,
       actions:
         job.destination.kind === 'lmstudio'

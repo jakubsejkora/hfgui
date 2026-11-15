@@ -1,5 +1,5 @@
 import { existsSync } from 'fs'
-import { rename, rm, unlink } from 'fs/promises'
+import { mkdir, rename, rm, unlink } from 'fs/promises'
 import { dirname, join } from 'path'
 import { BUSY_STATES, IN_PROGRESS_STATES, RESUMABLE_STATES } from '@shared/jobStates'
 import type {
@@ -11,6 +11,7 @@ import type {
   ExoRegistration,
   StartDownloadResult,
   StorageReport,
+  UpdateLink,
   UpdateStatus
 } from '@shared/types'
 import { safeJoin } from '../pathSafety'
@@ -65,6 +66,8 @@ export class DownloadManager {
   /** Newer versions of finished downloads, by job id. */
   private updates = new Map<string, UpdateStatus>()
   private checking: Promise<Record<string, UpdateStatus>> | null = null
+  /** Updates being set up (checking the Hub, sharing files), by the job they update. */
+  private updatesStarting = new Set<string>()
 
   constructor(deps: ManagerDeps) {
     this.deps = deps
@@ -109,7 +112,21 @@ export class DownloadManager {
       const job = DownloadJob.fromSnapshot(snap, this.jobDeps())
       this.jobs.set(job.jobId, job)
     }
-    // An update that finished but hadn't taken over its model's folder yet.
+    // Several updates of one download — repeat clicks, before that was
+    // guarded. Keep the first; the rest hold only clones of the old files.
+    const updatesOf = new Map<string, DownloadJob[]>()
+    for (const job of this.jobs.values()) {
+      if (job.update?.pendingMove && job.state !== 'completed') {
+        updatesOf.set(job.update.of, [...(updatesOf.get(job.update.of) ?? []), job])
+      }
+    }
+    for (const dupes of updatesOf.values()) {
+      for (const extra of dupes.sort((a, b) => a.createdAt - b.createdAt).slice(1)) {
+        await this.purge(extra)
+        this.jobs.delete(extra.jobId)
+      }
+    }
+    // An update that finished but hadn't moved into its model's folder yet.
     for (const job of [...this.jobs.values()]) {
       if (job.state === 'completed' && job.update?.pendingMove) await this.finishUpdate(job)
     }
@@ -174,13 +191,7 @@ export class DownloadManager {
   }
 
   private pump(): void {
-    const running = [...this.jobs.values()].filter((j) => j.isActive).length
-    const slots = Math.max(0, this.deps.getMaxConcurrent() - running)
-    if (slots === 0) return
-    const queued = [...this.jobs.values()]
-      .filter((j) => j.state === 'queued')
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .slice(0, slots)
+    const queued = pickJobsToStart([...this.jobs.values()], this.deps.getMaxConcurrent())
     for (const job of queued) {
       void job.run().finally(async () => {
         if (job.state === 'completed' && job.update?.pendingMove) await this.finishUpdate(job)
@@ -323,11 +334,11 @@ export class DownloadManager {
     return { ok: true, ...result }
   }
 
-  /** The final paths other downloads in the list use, in this job's folder. */
-  private sharedPaths(job: DownloadJob): Set<string> {
+  /** The final paths other downloads in the list use, in `dir` (the job's own folder by default). */
+  private sharedPaths(job: DownloadJob, dir = job.jobDir): Set<string> {
     const shared = new Set<string>()
     for (const other of this.jobs.values()) {
-      if (other === job || other.jobDir !== job.jobDir) continue
+      if (other === job || other.jobDir !== dir || other.update?.pendingMove) continue
       for (const e of other.dataEntries()) shared.add(e.path)
     }
     return shared
@@ -445,6 +456,7 @@ export class DownloadManager {
   /** Finished, not already replaced by a newer version, and not being updated right now. */
   private updatable(job: DownloadJob): boolean {
     if (job.state !== 'completed' || job.supersededBy || job.update?.pendingMove) return false
+    if (this.updatesStarting.has(job.jobId)) return false
     for (const other of this.jobs.values()) if (other.update?.of === job.jobId && other.update.pendingMove) return false
     return true
   }
@@ -515,15 +527,27 @@ export class DownloadManager {
   }
 
   /**
-   * Download the newer version of a finished download and keep the old one.
-   * Unchanged files are shared with it — no download, no extra disk space —
-   * and the new version takes over the model's folder once complete (see
-   * finishUpdate), so whatever points at that folder gets the update.
+   * Download the newer version of a finished download. Unchanged files are
+   * shared with the old one — no download, no extra disk space — and the new
+   * version moves into the model's folder once complete (see finishUpdate), so
+   * whatever points at that folder gets the update. The old version is kept
+   * beside it, or replaced.
    */
-  async update(jobId: string): Promise<ActionResult> {
+  async update(jobId: string, opts: { keepOld: boolean } = { keepOld: true }): Promise<ActionResult> {
+    // Checking the Hub and sharing files takes a moment; a second click in that
+    // window used to start a second update of the same model (and a third…).
+    if (this.updatesStarting.has(jobId)) return { ok: false, message: 'This model is already being updated' }
     const old = this.jobs.get(jobId)
     if (!old || !this.updatable(old)) return { ok: false, message: 'Only a finished download can be updated' }
+    this.updatesStarting.add(jobId)
+    try {
+      return await this.startUpdate(old, opts.keepOld)
+    } finally {
+      this.updatesStarting.delete(jobId)
+    }
+  }
 
+  private async startUpdate(old: DownloadJob, keepOld: boolean): Promise<ActionResult> {
     let planned: Planned
     try {
       planned = await this.planFor(old, await fetchLatest(old.repoId, this.hubOptions()))
@@ -531,7 +555,7 @@ export class DownloadManager {
       return { ok: false, message: (e as Error).message }
     }
     if (planned.kind !== 'available') {
-      this.updates.set(jobId, { status: planned.kind, checkedAt: Date.now() })
+      this.updates.set(old.jobId, { status: planned.kind, checkedAt: Date.now() })
       this.emit({ type: 'updates' })
       return {
         ok: false,
@@ -541,7 +565,6 @@ export class DownloadManager {
             : 'Its files were renamed or removed on Hugging Face — open the model to pick a size again'
       }
     }
-    if (!this.updatable(old)) return { ok: false, message: 'This model is already being updated' }
 
     const { plan } = planned
     const staging = versionedName(old.jobDir, plan.revision, existsSync)
@@ -579,7 +602,7 @@ export class DownloadManager {
       f.bytesDone = f.size
       f.state = 'done'
     }
-    job.update = { of: old.jobId, fromRevision: old.revision, pendingMove: old.jobDir }
+    job.update = { of: old.jobId, fromRevision: old.revision, pendingMove: old.jobDir, keepOld, aside: null, stage: null }
     this.jobs.set(job.jobId, job)
     this.updates.delete(old.jobId)
     job.setState('queued')
@@ -589,44 +612,79 @@ export class DownloadManager {
   }
 
   /**
-   * A finished update takes over its model's folder and the version it
-   * replaces moves aside to `<folder>@<its revision>`: two renames on one
-   * volume. The old version's new place is saved before the second, so a stop
-   * in between can never leave its record pointing at the new files; init()
-   * finishes whatever is left.
+   * A finished update moves into its model's folder, file by file — other
+   * downloads can share that folder (other GGUF sizes of one repo), so it is
+   * never moved as a whole. Kept, the old version's files go first, to
+   * `<folder>@<its revision>`; replaced, the new files land over them and files
+   * the new version dropped are deleted. Each stage is saved before it starts
+   * and safe to repeat, so a stop part-way is finished by the next init().
    */
   private async finishUpdate(job: DownloadJob): Promise<void> {
     const link = job.update
     if (job.state !== 'completed' || !link?.pendingMove) return
     const target = link.pendingMove
     const old = this.jobs.get(link.of)
+    const ownsTarget = old?.jobDir === target || (old !== undefined && old.jobDir === link.aside)
+    const keepOld = link.keepOld !== false && ownsTarget
+    const saveStage = async (stage: NonNullable<UpdateLink['stage']>, extra: Partial<UpdateLink> = {}): Promise<void> => {
+      job.update = { ...job.update!, ...extra, stage }
+      await this.persistence.flush()
+    }
     try {
-      if (job.jobDir !== target) {
-        if (existsSync(target)) {
-          const aside = versionedName(target, link.fromRevision, existsSync)
-          await rename(target, aside)
-          if (old?.jobDir === target) old.jobDir = aside
-          await this.persistence.flush()
-        } else if (old?.jobDir === target) {
-          // Stopped between the renames last time, before the old version's
-          // new place was saved: it went to the usual name.
-          const aside = `${target}@${link.fromRevision.slice(0, 7)}`
-          if (existsSync(aside)) old.jobDir = aside
+      // 1. Kept: the old version's files move aside, complete.
+      if (keepOld && old && (link.stage ?? 'aside') === 'aside') {
+        const aside = link.aside ?? versionedName(target, link.fromRevision, existsSync)
+        await saveStage('aside', { aside })
+        const shared = this.sharedPaths(old, target)
+        for (const f of old.files) {
+          const from = safeJoin(target, f.path)
+          const to = safeJoin(aside, f.path)
+          if (existsSync(to) || !existsSync(from)) continue
+          // Another download in this folder uses it too: copy, don't take it.
+          if (shared.has(from)) await shareFile(from, to, await canClone(target))
+          else await renameInto(from, to)
         }
-        await rename(job.jobDir, target)
+        old.jobDir = aside
+        await this.persistence.flush()
+      }
+
+      // 2. The new version's files move in, over whatever is left of the old.
+      if (job.update?.stage !== 'drop') {
+        await saveStage('place')
+        for (const f of job.files) {
+          const from = safeJoin(job.jobDir, f.path)
+          if (existsSync(from)) await renameInto(from, safeJoin(target, f.path))
+        }
+        await pruneEmptyDirs(job.jobDir, job.destination.baseDir)
         job.jobDir = target
       }
+
+      // 3. Replaced: files the new version no longer has go, and so does the old record.
+      if (!keepOld && old) {
+        await saveStage('drop')
+        const keep = new Set(job.files.map((f) => f.path))
+        const shared = this.sharedPaths(old, target)
+        for (const f of old.files) {
+          const path = safeJoin(target, f.path)
+          if (!keep.has(f.path) && !shared.has(path)) await unlink(path).catch(() => {})
+        }
+      }
     } catch (e) {
-      // The update works where it is; taking over the folder is retried next launch.
-      console.error('[hfgui] finished update could not take over its folder:', e)
+      // The update works where it is; moving in is retried next launch.
+      console.error('[hfgui] finished update could not move into its folder:', e)
       return
     }
-    job.update = { ...link, pendingMove: null }
-    if (old) {
+
+    job.jobDir = target
+    job.update = { ...job.update!, pendingMove: null, stage: null }
+    if (old && keepOld) {
       old.supersededBy = job.jobId
-      this.updates.delete(old.jobId)
       this.emit({ type: 'state', jobId: old.jobId, snapshot: old.snapshot() })
+    } else if (old) {
+      this.jobs.delete(old.jobId)
+      this.emit({ type: 'removed', jobId: old.jobId })
     }
+    if (old) this.updates.delete(old.jobId)
     this.updates.set(job.jobId, { status: 'current', checkedAt: Date.now() })
     this.emit({ type: 'state', jobId: job.jobId, snapshot: job.snapshot() })
     this.emit({ type: 'updates' })
@@ -653,4 +711,35 @@ function toStatus(planned: Planned, checkedAt: number): UpdateStatus {
     changed: planned.changed,
     fetchBytes: planned.fetchBytes
   }
+}
+
+/** Move a file, making its folder first; replaces what is there. */
+async function renameInto(from: string, to: string): Promise<void> {
+  await mkdir(dirname(to), { recursive: true })
+  await rename(from, to)
+}
+
+/** Below this much left to fetch, a download doesn't wait for a slot: an 80 KB update shouldn't queue behind a 500 GB model. */
+export const SMALL_JOB_BYTES = 256 * 1024 * 1024
+
+/**
+ * Queued jobs to start now, oldest first. Big ones take the free slots;
+ * small ones start regardless, and don't count against the limit either.
+ * A limit of 0 starts nothing (tests use it to keep jobs queued).
+ */
+export function pickJobsToStart<
+  J extends Pick<DownloadJob, 'state' | 'isActive' | 'totalBytes' | 'bytesDone' | 'createdAt'>
+>(jobs: readonly J[], maxConcurrent: number): J[] {
+  if (maxConcurrent <= 0) return []
+  const small = (j: J): boolean => j.totalBytes - j.bytesDone <= SMALL_JOB_BYTES
+  let slots = maxConcurrent - jobs.filter((j) => j.isActive && !small(j)).length
+  const start: J[] = []
+  for (const job of [...jobs].filter((j) => j.state === 'queued').sort((a, b) => a.createdAt - b.createdAt)) {
+    if (small(job)) start.push(job)
+    else if (slots > 0) {
+      start.push(job)
+      slots--
+    }
+  }
+  return start
 }

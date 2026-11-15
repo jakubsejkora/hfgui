@@ -56,8 +56,10 @@ export function registerIpc(manager: DownloadManager, settings: SettingsStore): 
   ipcMain.handle(IPC.cleanLeftovers, () => manager.cleanLeftovers())
   ipcMain.handle(IPC.getUpdates, () => manager.getUpdates())
   ipcMain.handle(IPC.checkForUpdates, () => manager.checkUpdates())
-  ipcMain.handle(IPC.updateDownload, (_e, jobId: string) =>
-    typeof jobId === 'string' ? manager.update(jobId) : { ok: false, message: 'Unknown download' }
+  ipcMain.handle(IPC.updateDownload, (_e, jobId: string, opts?: { keepOld?: unknown }) =>
+    typeof jobId === 'string'
+      ? manager.update(jobId, { keepOld: opts?.keepOld !== false })
+      : { ok: false, message: 'Unknown download' }
   )
 
   ipcMain.handle(IPC.getSettings, () => settings.get())

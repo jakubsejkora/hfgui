@@ -37,10 +37,24 @@ export const jobActions = {
     await runAction(window.hfgui.cancelDownload(jobId), 'Couldn’t cancel')
     refreshStorage()
   },
-  /** The newer version, beside the old one (see DownloadManager.update). */
-  update: async (jobId: string): Promise<void> => {
-    const result = await runAction(window.hfgui.updateDownload(jobId), 'Couldn’t start the update')
-    if (result && !result.ok) toast('error', result.message)
+  /** The newer version, beside the old one or replacing it (see DownloadManager.update). True once started. */
+  update: async (
+    job: { jobId: string; displayName: string },
+    keepOld: boolean,
+    fetchBytes?: number
+  ): Promise<boolean> => {
+    const result = await runAction(window.hfgui.updateDownload(job.jobId, { keepOld }), 'Couldn’t start the update')
+    if (!result) return false
+    if (!result.ok) {
+      toast('error', result.message)
+      return false
+    }
+    // Small updates finish in a moment; say it started, so the click visibly did something.
+    toast('info', `Updating ${job.displayName}`, {
+      description:
+        fetchBytes !== undefined ? `Only the changed files download: ${formatBytes(fetchBytes)}.` : undefined
+    })
+    return true
   },
   checkForUpdates: async (): Promise<void> => {
     const result = await runAction(window.hfgui.checkForUpdates(), 'Couldn’t check for updates')

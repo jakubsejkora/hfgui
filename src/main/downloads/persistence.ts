@@ -82,7 +82,13 @@ export function restoreSnapshot(raw: unknown): DownloadJobSnapshot | null {
         ? {
             of: raw.update.of,
             fromRevision: raw.update.fromRevision,
-            pendingMove: typeof raw.update.pendingMove === 'string' ? raw.update.pendingMove : null
+            pendingMove: typeof raw.update.pendingMove === 'string' ? raw.update.pendingMove : null,
+            keepOld: raw.update.keepOld !== false,
+            aside: typeof raw.update.aside === 'string' ? raw.update.aside : null,
+            stage:
+              raw.update.stage === 'aside' || raw.update.stage === 'place' || raw.update.stage === 'drop'
+                ? raw.update.stage
+                : null
           }
         : null,
     supersededBy: typeof raw.supersededBy === 'string' ? raw.supersededBy : null

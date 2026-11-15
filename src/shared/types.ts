@@ -100,16 +100,24 @@ export interface DownloadJobSnapshot {
 /**
  * A download that is a newer version of another. It is built in its own
  * folder, sharing unchanged files with the old one (copy-on-write clones), and
- * takes over the model's folder once complete; the old version moves aside to
- * `<folder>@<its short revision>`.
+ * moves into the model's folder once complete — file by file, so other
+ * downloads sharing that folder (other GGUF sizes) are left alone. The old
+ * version's files move aside to `<folder>@<its short revision>`, or are
+ * replaced.
  */
 export interface UpdateLink {
-  /** The older download, which stays in the list. */
+  /** The older download. */
   of: string
-  /** Its revision — names its folder once this version takes over. */
+  /** Its revision — names the folder it moves to when kept. */
   fromRevision: string
   /** The folder this version moves into once complete; null once it has. */
   pendingMove: string | null
+  /** Keep the old version beside this one, or let this one replace it. Absent (older updates): kept. */
+  keepOld?: boolean
+  /** Where the old version's files go when kept; fixed once chosen, so a stop can't pick another. */
+  aside?: string | null
+  /** How far moving into place got, so a stop part-way resumes where it was. */
+  stage?: 'aside' | 'place' | 'drop' | null
 }
 
 /** What hfgui knows about a newer version of a finished download. */

@@ -37,7 +37,7 @@ export function noticeFor(job: DownloadJobSnapshot): DownloadNotice | null {
       ? {
           jobId: job.jobId,
           title: 'Update finished',
-          body: `${job.displayName} is up to date. The previous version is kept beside it.`
+          body: `${job.displayName} is up to date.${job.update.keepOld === false ? '' : ' The previous version is kept beside it.'}`
         }
       : {
           jobId: job.jobId,

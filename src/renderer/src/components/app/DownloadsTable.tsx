@@ -21,6 +21,7 @@ import { copyText, jobActions, openExternal, openOnHub } from '@/lib/actions'
 import { requestCancel, requestDelete } from '@/lib/cancelStore'
 import { STALL_MS, jobFraction, useDownloadsStore } from '@/lib/downloadsStore'
 import { useStorageReport, useUpdates } from '@/lib/queries'
+import { useUpdateDialog } from '@/lib/updateDialog'
 import { useNow } from '@/lib/useNow'
 import { useUiStore } from '@/lib/uiStore'
 import { cn } from '@/lib/utils'
@@ -124,9 +125,17 @@ function ExoLine({ job, reg }: { job: DownloadJobSnapshot; reg: ExoRegistration 
   )
 }
 
+/** The newer version of this download, while it is on its way. */
+function useUpdatingTo(jobId: string): DownloadJobSnapshot | undefined {
+  return useDownloadsStore((s) =>
+    Object.values(s.jobs).find((j) => j.update?.of === jobId && j.update.pendingMove !== null)
+  )
+}
+
 function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boolean }) {
   const { progress, stalled } = useLiveProgress(job)
   const update = useUpdates().data?.[job.jobId]
+  const updatingTo = useUpdatingTo(job.jobId)
   if (missing) {
     return (
       <div className="flex min-w-0 flex-col gap-1.5">
@@ -167,7 +176,11 @@ function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boole
   } else if (job.state === 'paused') {
     meta = `${formatBytes(job.bytesDone)} of ${formatBytes(job.totalBytes)} · ${pct}%`
   } else if (job.state === 'completed') {
-    meta = job.supersededBy ? (
+    meta = updatingTo ? (
+      <span className="flex items-center gap-1.5 text-foreground">
+        <Spinner className="size-3" /> Updating to the new version…
+      </span>
+    ) : job.supersededBy ? (
       <span className="whitespace-normal">
         {job.completedAt ? `Downloaded ${shortDate(job.completedAt)}, ` : ''}kept beside the newer version
       </span>
@@ -235,17 +248,14 @@ function RowActions({ job, missing }: { job: DownloadJobSnapshot; missing: boole
   const openModel = useUiStore((s) => s.openModel)
   const openTokenDialog = useUiStore((s) => s.setTokenDialogOpen)
   const update = useUpdates().data?.[job.jobId]
+  const updatingTo = useUpdatingTo(job.jobId)
+  const openUpdate = useUpdateDialog((s) => s.open)
   const { state } = job
 
   return (
     <div className="flex items-center justify-end gap-1">
-      {state === 'completed' && !missing && update?.status === 'available' && (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => void jobActions.update(job.jobId)}
-          data-testid={`update-${job.jobId}`}
-        >
+      {state === 'completed' && !missing && !updatingTo && update?.status === 'available' && (
+        <Button size="sm" variant="outline" onClick={() => openUpdate(job)} data-testid={`update-${job.jobId}`}>
           <RefreshCw /> Update
         </Button>
       )}

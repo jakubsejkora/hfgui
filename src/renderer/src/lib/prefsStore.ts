@@ -21,6 +21,8 @@ interface Prefs {
   sidebarOpen: boolean
   guideCardDismissed: boolean
   downloadsTab: DownloadsTab
+  /** The last choice in the update dialog: keep the old version beside the new one. */
+  updateKeepsOld: boolean
 }
 
 interface PrefsState extends Prefs {
@@ -34,7 +36,8 @@ export const DEFAULT_PREFS: Prefs = {
   layout: 'grid',
   sidebarOpen: true,
   guideCardDismissed: false,
-  downloadsTab: 'all'
+  downloadsTab: 'all',
+  updateKeepsOld: true
 }
 
 const SORTS: SortKey[] = ['trendingScore', 'downloads', 'likes', 'lastModified']
@@ -51,6 +54,7 @@ export function sanitizePrefs(stored: unknown): Prefs {
     layout: s.layout === 'table' ? 'table' : 'grid',
     sidebarOpen: s.sidebarOpen !== false,
     guideCardDismissed: s.guideCardDismissed === true,
+    updateKeepsOld: s.updateKeepsOld !== false,
     downloadsTab: TABS.includes(s.downloadsTab as DownloadsTab)
       ? (s.downloadsTab as DownloadsTab)
       : DEFAULT_PREFS.downloadsTab

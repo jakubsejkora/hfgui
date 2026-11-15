@@ -23,6 +23,7 @@ import { Onboarding } from './components/app/Onboarding'
 import { SiteHeader } from './components/app/SiteHeader'
 import { Toasts } from './components/app/Toasts'
 import { TokenDialog } from './components/app/TokenDialog'
+import { UpdateDialog } from './components/app/UpdateDialog'
 import { BrowseView } from './views/BrowseView'
 import { DownloadsView } from './views/DownloadsView'
 import { GuideView } from './views/GuideView'
@@ -151,6 +152,7 @@ export default function App() {
       <ModelDetailView />
       <TokenDialog />
       <ConfirmDownloadDialog />
+      <UpdateDialog />
       <LinkDropOverlay />
       <Toasts />
     </TooltipProvider>
