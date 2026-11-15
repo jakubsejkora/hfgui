@@ -322,12 +322,13 @@ describe('updates', () => {
 })
 
 describe('pickJobsToStart', () => {
-  const job = (state: string, left: number, createdAt: number) => ({
+  const job = (state: string, left: number, createdAt: number, update = false) => ({
     state: state as 'queued',
     isActive: state === 'downloading',
     totalBytes: left,
     bytesDone: 0,
-    createdAt
+    createdAt,
+    update: update ? { of: 'job_old', fromRevision: OLD, pendingMove: '/m/model' } : null
   })
   const BIG = 50e9
 
@@ -339,5 +340,15 @@ describe('pickJobsToStart', () => {
     expect(pickJobsToStart([running[0], big, tiny], 2)).toEqual([tiny, big]) // oldest first
     expect(pickJobsToStart([job('queued', SMALL_JOB_BYTES + 1, 1), job('queued', BIG, 2)], 1)).toHaveLength(1)
     expect(pickJobsToStart([tiny], 0)).toEqual([])
+  })
+
+  it('starts an update right away whatever its size, without taking a slot', () => {
+    const running = [job('downloading', BIG, 1), job('downloading', BIG, 2)]
+    const queuedDownload = job('queued', BIG, 3)
+    const requantized = job('queued', 28.6e9, 4, true) // a big update still doesn't wait
+    expect(pickJobsToStart([...running, queuedDownload, requantized], 2)).toEqual([requantized])
+    // A running update leaves both slots to downloads.
+    const updating = { ...requantized, state: 'downloading' as const, isActive: true }
+    expect(pickJobsToStart([running[0], updating, queuedDownload], 2)).toEqual([queuedDownload])
   })
 })

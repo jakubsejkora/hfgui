@@ -738,15 +738,17 @@ async function renameInto(from: string, to: string): Promise<void> {
 export const SMALL_JOB_BYTES = 256 * 1024 * 1024
 
 /**
- * Queued jobs to start now, oldest first. Big ones take the free slots;
- * small ones start regardless, and don't count against the limit either.
+ * Queued jobs to start now, oldest first. Downloads take the free slots;
+ * updates of models already downloaded and small jobs start regardless, and
+ * don't count against the limit either — an update is usually seconds of
+ * work, and waiting hours behind a queue of new models made no sense.
  * A limit of 0 starts nothing (tests use it to keep jobs queued).
  */
 export function pickJobsToStart<
-  J extends Pick<DownloadJob, 'state' | 'isActive' | 'totalBytes' | 'bytesDone' | 'createdAt'>
+  J extends Pick<DownloadJob, 'state' | 'isActive' | 'totalBytes' | 'bytesDone' | 'createdAt' | 'update'>
 >(jobs: readonly J[], maxConcurrent: number): J[] {
   if (maxConcurrent <= 0) return []
-  const small = (j: J): boolean => j.totalBytes - j.bytesDone <= SMALL_JOB_BYTES
+  const small = (j: J): boolean => !!j.update?.pendingMove || j.totalBytes - j.bytesDone <= SMALL_JOB_BYTES
   let slots = maxConcurrent - jobs.filter((j) => j.isActive && !small(j)).length
   const start: J[] = []
   for (const job of [...jobs].filter((j) => j.state === 'queued').sort((a, b) => a.createdAt - b.createdAt)) {

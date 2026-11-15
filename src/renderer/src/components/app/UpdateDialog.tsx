@@ -82,7 +82,8 @@ export function UpdateDialog() {
             {update ? (
               <>
                 The {describeChanges(update.changed)} changed{published && <> on {published}</>}. Only the changed
-                files download: {formatBytes(update.fetchBytes)}.
+                files download: {formatBytes(update.fetchBytes)}. Updates start right away, even while other
+                downloads wait their turn.
               </>
             ) : (
               'A newer version is on Hugging Face.'
