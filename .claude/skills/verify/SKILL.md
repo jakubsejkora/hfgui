@@ -47,8 +47,9 @@ set); call `window.hfgui.checkForUpdates()` (results by job id, also `getUpdates
 **Check for updates** on Downloads. A row with a newer version gets `update-{jobId}`, which
 opens a dialog: `update-replace` / `update-keep` (radios), `update-confirm`. An update builds
 in `<jobDir>@<new rev7>`, then moves into `jobDir` file by file; kept, the old version's
-files move to `<jobDir>@<old rev7>`. Downloads with under 256 MB left skip the slot limit,
-so a test update runs even while big downloads hold every slot. Never run a driver on a copy
+files move to `<jobDir>@<old rev7>`. Updates (any size) and downloads with under 256 MB left
+skip the slot limit and don't take a slot, so a test update runs even while big downloads
+hold every slot and more wait in the queue. Never run a driver on a copy
 of the real `downloads.json` from here on: launch-time cleanup (duplicate updates, unfinished
 moves) acts on the folders it names. To test without the real Hub, rewrite main's fetch to a local server
 (`app.evaluate` replacing `https://huggingface.co/`) that answers `/api/models/{repo}`
