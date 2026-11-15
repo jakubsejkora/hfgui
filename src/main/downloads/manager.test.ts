@@ -97,7 +97,7 @@ describe('DownloadManager file ownership', () => {
     expect((await mgr.start(request('a', 10), dir)).ok).toBe(true)
 
     // Retrying the stopped one would make two jobs append to one .partial.
-    expect(mgr.resume(first.jobId)).toEqual({
+    expect(await mgr.resume(first.jobId)).toEqual({
       ok: false,
       message: 'Another download of these files is already in progress'
     })
@@ -109,7 +109,7 @@ describe('DownloadManager file ownership', () => {
     const res = await mgr.start(request('a', 10), join(userDataDir, 'a'))
     if (!res.ok) throw new Error('start failed')
     await mgr.cancel(res.jobId)
-    expect(mgr.resume(res.jobId)).toEqual({ ok: true })
+    expect(await mgr.resume(res.jobId)).toEqual({ ok: true })
     expect(mgr.list()[0].state).toBe('queued')
   })
 })

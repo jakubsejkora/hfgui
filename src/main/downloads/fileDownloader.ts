@@ -4,7 +4,7 @@ import { mkdir, open, rename, stat, unlink, writeFile } from 'fs/promises'
 import { dirname } from 'path'
 import { Readable, Transform } from 'stream'
 import { pipeline } from 'stream/promises'
-import { DownloadError, isAbortError } from './resolve'
+import { DownloadError, classifyError, isAbortError } from './resolve'
 
 export interface FileDownloadOptions {
   url: string
@@ -71,16 +71,6 @@ async function finalize(partialPath: string, destPath: string): Promise<void> {
   await rename(partialPath, destPath)
 }
 
-function classify(e: unknown): DownloadError {
-  if (e instanceof DownloadError) return e
-  if (e instanceof Error) {
-    const code = (e as NodeJS.ErrnoException).code
-    if (code === 'ENOSPC') return new DownloadError('disk-full', 'Not enough disk space', false)
-    return new DownloadError('network', e.message, true)
-  }
-  return new DownloadError('unknown', String(e), false)
-}
-
 /**
  * Download a single file with Range-based resume and atomic rename.
  * Throws DownloadError; AbortError passes through untouched (pause/cancel).
@@ -140,7 +130,7 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
     res = await fetch(url, { headers, signal, redirect: 'follow' })
   } catch (e) {
     if (isAbortError(e)) throw e
-    throw classify(e)
+    throw classifyError(e)
   }
 
   if (res.status === 401 || res.status === 403) {
@@ -214,7 +204,7 @@ export async function downloadFile(opts: FileDownloadOptions): Promise<void> {
     )
   } catch (e) {
     if (isAbortError(e)) throw e
-    throw classify(e)
+    throw classifyError(e)
   }
 
   const written = await sizeOf(partialPath)

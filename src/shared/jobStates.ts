@@ -111,6 +111,14 @@ export const ERROR_COPY: Record<DownloadErrorCode, { title: string; hint: string
     title: 'Hugging Face returned an error',
     hint: 'Retry in a moment.'
   },
+  permission: {
+    title: 'Can’t write to the folder',
+    hint: 'Check the folder’s permissions in Finder, or choose another folder, then retry.'
+  },
+  'folder-unavailable': {
+    title: 'The folder is gone',
+    hint: 'It was moved or deleted, or its drive was disconnected. Reconnect it, then retry.'
+  },
   unknown: {
     title: 'Something went wrong',
     hint: 'Retry. If it keeps failing, the details below say why.'

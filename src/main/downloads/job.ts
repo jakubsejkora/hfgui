@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm, rmdir, stat, unlink } from 'fs/promises'
+import { mkdir, readdir, rmdir, stat, unlink } from 'fs/promises'
 import { safeJoin } from '../pathSafety'
 import type {
   DownloadEvent,
@@ -9,7 +9,9 @@ import type {
   JobState
 } from '@shared/types'
 import { downloadFile } from './fileDownloader'
-import { DownloadError, isAbortError, resolveUrl } from './resolve'
+import type { LedgerEntry } from './ledger'
+import { DownloadError, classifyError, isAbortError, resolveUrl } from './resolve'
+import { sizeOf } from './storage'
 
 export interface JobDeps {
   getToken(): string | null
@@ -17,6 +19,10 @@ export interface JobDeps {
   persist(): void
   /** The download-wide speed cap, shared with every other job. */
   throttle(bytes: number, signal: AbortSignal): Promise<void> | null
+  /** Record files this job is about to write, so unfinished data is never lost track of. */
+  track(entries: LedgerEntry[]): void
+  /** They form a finished model now (or were deleted): no longer leftovers-in-waiting. */
+  untrack(paths: string[]): void
 }
 
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000]
@@ -50,6 +56,8 @@ export class DownloadJob {
   createdAt: number
   completedAt: number | null = null
   exoRegistration: ExoRegistration | null = null
+  /** Paused by the user rather than by quitting — "Resume on launch" skips these. */
+  pausedByUser = false
 
   private deps: JobDeps
   private abortController: AbortController | null = null
@@ -104,6 +112,7 @@ export class DownloadJob {
     job.createdAt = snap.createdAt
     job.completedAt = snap.completedAt
     job.exoRegistration = snap.exoRegistration ?? null
+    job.pausedByUser = snap.pausedByUser === true
     return job
   }
 
@@ -135,7 +144,8 @@ export class DownloadJob {
       error: this.error,
       createdAt: this.createdAt,
       completedAt: this.completedAt,
-      exoRegistration: this.exoRegistration ? { ...this.exoRegistration } : null
+      exoRegistration: this.exoRegistration ? { ...this.exoRegistration } : null,
+      pausedByUser: this.pausedByUser
     }
   }
 
@@ -198,6 +208,7 @@ export class DownloadJob {
     this.lastEmitBytes = 0
     this.emaBytesPerSec = 0
     this.setState('downloading')
+    this.deps.track(this.dataEntries())
 
     try {
       await mkdir(this.jobDir, { recursive: true })
@@ -233,7 +244,7 @@ export class DownloadJob {
             break
           } catch (e) {
             if (isAbortError(e)) throw e
-            const err = e instanceof DownloadError ? e : new DownloadError('unknown', String(e))
+            const err = classifyError(e)
             if (err.retryable && attempt < RETRY_DELAYS_MS.length) {
               await sleep(RETRY_DELAYS_MS[attempt], signal)
               attempt++
@@ -258,6 +269,8 @@ export class DownloadJob {
         }
       }
       this.completedAt = Date.now()
+      // A model now, not a leftover-in-waiting.
+      this.deps.untrack(this.dataEntries().map((e) => e.path))
       this.setState('completed')
     } catch (e) {
       if (this.cancelRequested) {
@@ -269,7 +282,7 @@ export class DownloadJob {
         }
         this.setState('paused')
       } else {
-        const err = e instanceof DownloadError ? e : new DownloadError('unknown', String(e))
+        const err = classifyError(e)
         this.error = { code: err.code, message: err.message }
         this.setState('error')
       }
@@ -291,6 +304,7 @@ export class DownloadJob {
   }
 
   prepareResume(): void {
+    this.pausedByUser = false
     this.error = null
     this.cancelRequested = false
     this.pauseRequested = false
@@ -332,8 +346,50 @@ export class DownloadJob {
     }
   }
 
-  /** Delete everything this job wrote (used by remove-with-files, not exposed yet). */
-  async deleteAllFiles(): Promise<void> {
-    await rm(this.jobDir, { recursive: true, force: true })
+  /** The files this job writes — each finished file and its .partial — for the ledger. */
+  dataEntries(): LedgerEntry[] {
+    const out: LedgerEntry[] = []
+    for (const f of this.files) {
+      let final: string
+      try {
+        final = this.finalPathFor(f.path)
+      } catch {
+        continue // a tampered snapshot path — never touch it
+      }
+      const base = { jobDir: this.jobDir, baseDir: this.destination.baseDir }
+      out.push({ path: final, ...base }, { path: `${final}.partial`, ...base })
+    }
+    return out
+  }
+
+  /** Bytes this job currently occupies on disk: finished files plus partials. */
+  async bytesOnDisk(): Promise<number> {
+    let total = 0
+    for (const e of this.dataEntries()) total += (await sizeOf(e.path)) ?? 0
+    return total
+  }
+
+  /** Every file present at its expected size — false once moved, deleted or truncated. */
+  async filesIntact(): Promise<boolean> {
+    for (const f of this.files) {
+      let final: string
+      try {
+        final = this.finalPathFor(f.path)
+      } catch {
+        return false
+      }
+      if ((await sizeOf(final)) !== f.size) return false
+    }
+    return true
+  }
+
+  /** After its data was deleted: start over from zero, and say so. */
+  resetProgress(): void {
+    for (const f of this.files) {
+      f.bytesDone = 0
+      f.state = 'pending'
+    }
+    this.deps.emit({ type: 'state', jobId: this.jobId, snapshot: this.snapshot() })
+    this.deps.persist()
   }
 }

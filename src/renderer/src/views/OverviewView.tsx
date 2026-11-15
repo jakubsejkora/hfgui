@@ -15,13 +15,14 @@ import { comfortableModelBytes, ramFit } from '@shared/fit'
 import { formatBytes, formatSpeed, timeAgo } from '@shared/format'
 import { compareJobs, isInProgress, isRunning } from '@shared/jobStates'
 import type { DownloadJobSnapshot } from '@shared/types'
-import { openExternal } from '@/lib/actions'
+import { jobActions, openExternal } from '@/lib/actions'
 import { jobFraction, totalSpeed, useDownloadsStore } from '@/lib/downloadsStore'
 import { usePrefs } from '@/lib/prefsStore'
 import {
   useDestinations,
   useDiskSpace,
   useModelSearch,
+  useStorageReport,
   useSystemInfo,
   useTokenStatus
 } from '@/lib/queries'
@@ -91,6 +92,8 @@ function Kpis() {
   const { data: destinations } = useDestinations()
   const target = destinations ? defaultDestination('gguf', destinations) : null
   const { data: disk } = useDiskSpace(target?.path)
+  const { data: report } = useStorageReport()
+  const reclaimable = report?.leftovers.bytes ?? 0
 
   const list = Object.values(jobs)
   const inProgress = list.filter((j) => isInProgress(j.state))
@@ -130,7 +133,25 @@ function Kpis() {
             <HardDrive />
           </IconTile>
         }
-        footer={target ? `Where ${target.label} downloads land` : 'Choose a folder in Settings'}
+        footer={
+          reclaimable > 0 ? (
+            <span className="flex flex-wrap items-center gap-x-1">
+              {formatBytes(reclaimable)} reclaimable ·
+              <Button
+                variant="link"
+                size="xs"
+                className="h-auto px-0 text-xs"
+                onClick={() => void jobActions.cleanLeftovers()}
+              >
+                Clean up
+              </Button>
+            </span>
+          ) : target ? (
+            `Where ${target.label} downloads land`
+          ) : (
+            'Choose a folder in Settings'
+          )
+        }
       >
         {used !== null && (
           <Progress

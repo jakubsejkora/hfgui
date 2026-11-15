@@ -2,15 +2,21 @@ import { create } from 'zustand'
 import type { DownloadJobSnapshot } from '@shared/types'
 import { jobActions } from './actions'
 
-interface CancelState {
-  /** The job awaiting confirmation, if any. */
-  job: DownloadJobSnapshot | null
+/** A destructive download action waiting for confirmation. */
+export type ConfirmKind =
+  /** Stop a running/paused download and delete what it downloaded. */
+  | 'cancel'
+  /** Remove a download and delete its data: a finished model's files, or partial data. */
+  | 'delete'
+
+interface ConfirmState {
+  request: { kind: ConfirmKind; job: DownloadJobSnapshot } | null
   close(): void
 }
 
-export const useCancelStore = create<CancelState>((set) => ({
-  job: null,
-  close: () => set({ job: null })
+export const useConfirmStore = create<ConfirmState>((set) => ({
+  request: null,
+  close: () => set({ request: null })
 }))
 
 /**
@@ -23,5 +29,10 @@ export function requestCancel(job: DownloadJobSnapshot): void {
     void jobActions.cancel(job.jobId)
     return
   }
-  useCancelStore.setState({ job })
+  useConfirmStore.setState({ request: { kind: 'cancel', job } })
+}
+
+/** Delete a download's data from disk — always confirmed. */
+export function requestDelete(job: DownloadJobSnapshot): void {
+  useConfirmStore.setState({ request: { kind: 'delete', job } })
 }

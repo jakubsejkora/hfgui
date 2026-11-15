@@ -53,6 +53,10 @@ export type DownloadErrorCode =
   | 'size-mismatch'
   | 'checksum-mismatch'
   | 'http'
+  /** The folder can't be written to (EACCES / EPERM / EROFS). */
+  | 'permission'
+  /** The folder vanished mid-download — deleted, or its drive disconnected. */
+  | 'folder-unavailable'
   | 'unknown'
 
 export interface FileProgress {
@@ -82,6 +86,11 @@ export interface DownloadJobSnapshot {
   completedAt: number | null
   /** Set after a completed exo download is (auto-)registered with exo. */
   exoRegistration: ExoRegistration | null
+  /**
+   * Paused by the user, as opposed to by quitting mid-download. "Resume on
+   * launch" only picks up the latter. Absent in snapshots from older versions.
+   */
+  pausedByUser?: boolean
 }
 
 export type DownloadEvent =
@@ -149,3 +158,26 @@ export type StartDownloadResult =
 
 /** Outcome of a job action that can be refused (e.g. resume). */
 export type ActionResult = { ok: true } | { ok: false; message: string }
+
+/** Outcome of deleting a download's data from disk. */
+export type DeleteResult =
+  | {
+      ok: true
+      freedBytes: number
+      /** Files left in place because another download in the list uses them too. */
+      keptShared: number
+    }
+  | { ok: false; message: string }
+
+/** Where hfgui's downloads are using disk space, for the cleanup UI. */
+export interface StorageReport {
+  /** Bytes on disk per unfinished download: partial files plus files it already finished. */
+  held: Record<string, number>
+  /**
+   * Data from downloads that never finished and are no longer in the list —
+   * dead space hfgui wrote and can safely delete. Never other apps' files.
+   */
+  leftovers: { files: number; bytes: number }
+  /** Finished downloads whose files were moved, deleted or truncated outside hfgui. */
+  missing: string[]
+}

@@ -1,10 +1,11 @@
-import { ArrowDownToLine, CheckCircle2, CircleAlert, Compass, Loader } from 'lucide-react'
-import { formatSpeed } from '@shared/format'
+import { ArrowDownToLine, CheckCircle2, CircleAlert, Compass, HardDrive, Loader } from 'lucide-react'
+import { formatBytes, formatSpeed } from '@shared/format'
 import { compareJobs, jobGroup, type JobGroup } from '@shared/jobStates'
 import type { DownloadJobSnapshot } from '@shared/types'
 import { jobActions } from '@/lib/actions'
 import { totalSpeed, useDownloadsStore } from '@/lib/downloadsStore'
 import { usePrefs, type DownloadsTab } from '@/lib/prefsStore'
+import { useStorageReport } from '@/lib/queries'
 import { toast } from '@/lib/toastStore'
 import { useUiStore } from '@/lib/uiStore'
 import { Badge } from '@/components/ui/badge'
@@ -64,6 +65,7 @@ export function DownloadsView() {
   const tab = usePrefs((s) => s.downloadsTab)
   const setPrefs = usePrefs((s) => s.set)
   const setView = useUiStore((s) => s.setView)
+  const { data: report } = useStorageReport()
 
   const all = Object.values(jobs).sort(compareJobs)
   const byGroup = (g: JobGroup): DownloadJobSnapshot[] => all.filter((j) => jobGroup(j.state) === g)
@@ -79,11 +81,15 @@ export function DownloadsView() {
     })
   }
 
+  const heldBytes = Object.values(report?.held ?? {}).reduce((sum, b) => sum + b, 0)
+  const leftovers = report?.leftovers ?? { files: 0, bytes: 0 }
+
   const summary = [
     inProgress.length > 0 && `${inProgress.length} in progress`,
     speed > 0 && formatSpeed(speed),
     finished.length > 0 && `${finished.length} finished`,
-    failed.length > 0 && `${failed.length} need attention`
+    failed.length > 0 && `${failed.length} need attention`,
+    heldBytes > 0 && `${formatBytes(heldBytes)} held by unfinished downloads`
   ].filter(Boolean)
 
   const empty = EMPTY[tab]
@@ -106,6 +112,24 @@ export function DownloadsView() {
           )
         }
       />
+
+      {leftovers.bytes > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card px-4 py-3 shadow-xs">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40 text-muted-foreground">
+            <HardDrive className="size-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium">{formatBytes(leftovers.bytes)} of leftover data</div>
+            <div className="text-xs text-muted-foreground">
+              From downloads removed before they finished. Only files hfgui downloaded itself are
+              deleted.
+            </div>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => void jobActions.cleanLeftovers()}>
+            Clean up
+          </Button>
+        </div>
+      )}
 
       <Tabs value={tab} onValueChange={(v) => setPrefs({ downloadsTab: v as DownloadsTab })}>
         <TabsList>

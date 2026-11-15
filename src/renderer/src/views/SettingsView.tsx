@@ -1,8 +1,17 @@
 import { ExternalLink, FolderOpen, KeyRound, Monitor, Moon, RotateCcw, Sun } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { formatBytes } from '@shared/format'
 import type { DestinationKind, Settings, Theme } from '@shared/types'
-import { openExternal } from '@/lib/actions'
-import { useDestinations, useHfAccount, useSettings, useTokenStatus, useUpdateSettings } from '@/lib/queries'
+import { jobActions, openExternal } from '@/lib/actions'
+import { usePrefs } from '@/lib/prefsStore'
+import {
+  useDestinations,
+  useHfAccount,
+  useSettings,
+  useStorageReport,
+  useTokenStatus,
+  useUpdateSettings
+} from '@/lib/queries'
 import { useUiStore } from '@/lib/uiStore'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -238,6 +247,58 @@ function AccountRow() {
   )
 }
 
+function StorageRows() {
+  const { data: report } = useStorageReport()
+  const setView = useUiStore((s) => s.setView)
+  const setPrefs = usePrefs((s) => s.set)
+  const leftovers = report?.leftovers ?? { files: 0, bytes: 0 }
+  const held = Object.values(report?.held ?? {}).reduce((sum, b) => sum + b, 0)
+  return (
+    <>
+      <Row
+        title="Leftover data"
+        description={
+          leftovers.bytes > 0
+            ? `${formatBytes(leftovers.bytes)} in ${leftovers.files} ${leftovers.files === 1 ? 'file' : 'files'} from downloads removed before they finished.`
+            : 'Nothing to clean up.'
+        }
+        control={
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={leftovers.bytes === 0}
+            onClick={() => void jobActions.cleanLeftovers()}
+          >
+            Clean up
+          </Button>
+        }
+      />
+      <Separator />
+      <Row
+        title="Unfinished downloads"
+        description={
+          held > 0
+            ? `${formatBytes(held)} held by paused, failed and stopped downloads, so they can pick up where they left off. Discard any you no longer want.`
+            : 'No unfinished downloads are holding space.'
+        }
+        control={
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={held === 0}
+            onClick={() => {
+              setPrefs({ downloadsTab: 'all' })
+              setView('downloads')
+            }}
+          >
+            Review
+          </Button>
+        }
+      />
+    </>
+  )
+}
+
 const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ['⌘', 'K'], label: 'Search models (or press /)' },
   { keys: ['⌘', '1–5'], label: 'Overview, Browse, Downloads, Private inference, Settings' },
@@ -361,6 +422,13 @@ export function SettingsView() {
               />
             }
           />
+        </SettingsSection>
+
+        <SettingsSection
+          title="Storage"
+          description="Downloads that never finish shouldn’t keep using your disk. hfgui only ever deletes files it downloaded itself — never another app’s, even in shared folders."
+        >
+          <StorageRows />
         </SettingsSection>
 
         <SettingsSection title="Keyboard" description="Get around without the pointer.">

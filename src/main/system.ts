@@ -15,8 +15,22 @@ function nearestExisting(dir: string): string {
   return probe
 }
 
+/**
+ * The drive name when `dir` is on an external drive that isn't connected. On
+ * macOS drives mount at /Volumes/<name>; once unplugged the mount point is gone
+ * and nearestExisting() would walk up to "/" — reporting the boot disk's free
+ * space for a drive that isn't there.
+ */
+export function missingVolume(dir: string, exists: (p: string) => boolean = existsSync): string | null {
+  const m = /^\/Volumes\/([^/]+)/.exec(dir)
+  if (!m) return null
+  return exists(`/Volumes/${m[1]}`) ? null : m[1]
+}
+
 /** statfs against the nearest existing ancestor, so `dir` may not exist yet. */
 export async function checkDiskSpace(dir: string): Promise<DiskSpace> {
+  const drive = missingVolume(dir)
+  if (drive) throw new Error(`The drive “${drive}” isn’t connected`)
   const s = await statfs(nearestExisting(dir))
   return {
     freeBytes: s.bavail * s.bsize,

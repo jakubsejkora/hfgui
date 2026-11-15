@@ -1,6 +1,7 @@
 import type { ModelRef } from './modelRef'
 import type {
   ActionResult,
+  DeleteResult,
   DestinationInfo,
   DiskSpace,
   DownloadEvent,
@@ -8,6 +9,7 @@ import type {
   DownloadRequest,
   Settings,
   StartDownloadResult,
+  StorageReport,
   SystemInfo,
   TokenStatus
 } from './types'
@@ -20,6 +22,9 @@ export const IPC = {
   removeDownload: 'hfgui:remove-download',
   retryExoRegistration: 'hfgui:retry-exo-registration',
   listDownloads: 'hfgui:list-downloads',
+  deleteDownload: 'hfgui:delete-download',
+  getStorageReport: 'hfgui:get-storage-report',
+  cleanLeftovers: 'hfgui:clean-leftovers',
   downloadEvent: 'hfgui:download-event',
   getSettings: 'hfgui:get-settings',
   setSettings: 'hfgui:set-settings',
@@ -49,6 +54,11 @@ export interface HfguiApi {
   /** Re-attempt registering a completed exo download in exo's model list. */
   retryExoRegistration(jobId: string): Promise<void>
   listDownloads(): Promise<DownloadJobSnapshot[]>
+  /** Remove a download from the list and delete its data (a finished model's files, or partial data). */
+  deleteDownload(jobId: string): Promise<DeleteResult>
+  getStorageReport(): Promise<StorageReport>
+  /** Delete data of unfinished downloads that are no longer in the list. */
+  cleanLeftovers(): Promise<{ files: number; freedBytes: number }>
   /** Returns an unsubscribe function. */
   onDownloadEvent(cb: (e: DownloadEvent) => void): () => void
 

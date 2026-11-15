@@ -61,7 +61,9 @@ function deps(events: DownloadEvent[]): JobDeps {
     getToken: () => null,
     emit: (ev) => events.push(ev),
     persist: () => {},
-    throttle: () => null
+    throttle: () => null,
+    track: () => {},
+    untrack: () => {}
   }
 }
 

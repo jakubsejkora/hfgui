@@ -133,6 +133,20 @@ export function useUpdateSettings() {
   })
 }
 
+/**
+ * Where downloads use disk space: what unfinished downloads hold, leftovers to
+ * clean up, and finished models whose files went missing. App.tsx refreshes it
+ * whenever a download changes state.
+ */
+export function useStorageReport() {
+  return useQuery({
+    queryKey: ['storage-report'],
+    queryFn: () => window.hfgui.getStorageReport(),
+    staleTime: 5_000,
+    refetchOnWindowFocus: true
+  })
+}
+
 export function useTokenStatus() {
   return useQuery({
     queryKey: ['token-status'],

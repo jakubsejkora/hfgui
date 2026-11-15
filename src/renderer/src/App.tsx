@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, type CSSProperties } from 'react'
 import { defaultDestination } from '@shared/destinationRules'
 import { parseModelRef } from '@shared/modelRef'
@@ -14,7 +15,7 @@ import { useUiStore, type View } from './lib/uiStore'
 import { SidebarInset, SidebarProvider } from './components/ui/sidebar'
 import { TooltipProvider } from './components/ui/tooltip'
 import { AppSidebar } from './components/app/AppSidebar'
-import { CancelDownloadDialog } from './components/app/CancelDownloadDialog'
+import { ConfirmDownloadDialog } from './components/app/ConfirmDownloadDialog'
 import { DownloadsDock } from './components/app/DownloadsDock'
 import { LinkDropOverlay } from './components/app/LinkDropOverlay'
 import { SiteHeader } from './components/app/SiteHeader'
@@ -34,17 +35,25 @@ export default function App() {
   const dropDownload = useDropDownload()
   const { data: destinations } = useDestinations()
   const invalidate = useInvalidate()
+  const queryClient = useQueryClient()
   const scrollRoot = useRef<HTMLDivElement>(null)
   useTheme()
   useGlobalShortcuts()
 
   useEffect(() => {
     void useDownloadsStore.getState().hydrate()
+    // Disk usage changes whenever a download changes state; refresh it once a burst settles.
+    let storageTimer: ReturnType<typeof setTimeout> | null = null
+    const refreshStorage = (): void => {
+      if (storageTimer) clearTimeout(storageTimer)
+      storageTimer = setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['storage-report'] }), 800)
+    }
     const unsubscribe = window.hfgui.onDownloadEvent((ev) => {
       const store = useDownloadsStore.getState()
       const previous = ev.type === 'state' ? store.jobs[ev.jobId]?.state : undefined
       store.applyEvent(ev)
       if (ev.type === 'state') announceTransition(previous, ev.snapshot)
+      if (ev.type !== 'progress') refreshStorage()
     })
     // A notification click (or anything else in main) can ask for a page.
     const stopNavigate = window.hfgui.onNavigate((target) => {
@@ -55,8 +64,9 @@ export default function App() {
     return () => {
       unsubscribe()
       stopNavigate()
+      if (storageTimer) clearTimeout(storageTimer)
     }
-  }, [])
+  }, [queryClient])
 
   // Hooks for driving the app in e2e tests. Each one calls the same code path
   // the UI does, so a passing test means the real flow works.
@@ -116,7 +126,7 @@ export default function App() {
       </SidebarProvider>
       <ModelDetailView />
       <TokenDialog />
-      <CancelDownloadDialog />
+      <ConfirmDownloadDialog />
       <LinkDropOverlay />
       <Toasts />
     </TooltipProvider>

@@ -1,4 +1,5 @@
 import {
+  ArrowDownToLine,
   Copy,
   ExternalLink,
   FolderOpen,
@@ -15,8 +16,9 @@ import { formatBytes, formatEta, formatSpeed, timeAgo } from '@shared/format'
 import { ERROR_COPY, isInProgress } from '@shared/jobStates'
 import type { DownloadJobSnapshot, ExoRegistration } from '@shared/types'
 import { copyText, jobActions, openExternal, openOnHub } from '@/lib/actions'
-import { requestCancel } from '@/lib/cancelStore'
+import { requestCancel, requestDelete } from '@/lib/cancelStore'
 import { STALL_MS, jobFraction, useDownloadsStore } from '@/lib/downloadsStore'
+import { useStorageReport } from '@/lib/queries'
 import { useNow } from '@/lib/useNow'
 import { useUiStore } from '@/lib/uiStore'
 import { cn } from '@/lib/utils'
@@ -38,7 +40,7 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table'
-import { JobStatusBadge } from './badges'
+import { JobStatusBadge, StatusPill } from './badges'
 import { ModelAvatar } from './ModelAvatar'
 import { Tip } from './Tip'
 
@@ -49,6 +51,10 @@ const DEST_LABEL: Record<DownloadJobSnapshot['destination']['kind'], string> = {
 }
 
 const EXO_DASHBOARD_URL = 'http://localhost:52415'
+
+/** Downloading or verifying: stop it first (Cancel), then it can be discarded. */
+const isRunningState = (state: DownloadJobSnapshot['state']): boolean =>
+  state === 'downloading' || state === 'verifying'
 
 function revealTarget(job: DownloadJobSnapshot): string {
   return job.files.length === 1 ? `${job.jobDir}/${job.files[0].path}` : job.jobDir
@@ -108,8 +114,20 @@ function ExoLine({ job, reg }: { job: DownloadJobSnapshot; reg: ExoRegistration 
   )
 }
 
-function StatusCell({ job }: { job: DownloadJobSnapshot }) {
+function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boolean }) {
   const { progress, stalled } = useLiveProgress(job)
+  if (missing) {
+    return (
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <div>
+          <StatusPill tone="warning">Files missing</StatusPill>
+        </div>
+        <div className="text-xs leading-relaxed whitespace-normal text-muted-foreground">
+          Moved or deleted outside hfgui.
+        </div>
+      </div>
+    )
+  }
   const pct = Math.floor(jobFraction(job) * 100)
   const showBar = isInProgress(job.state)
 
@@ -184,14 +202,19 @@ function StatusCell({ job }: { job: DownloadJobSnapshot }) {
   )
 }
 
-function RowActions({ job }: { job: DownloadJobSnapshot }) {
+function RowActions({ job, missing }: { job: DownloadJobSnapshot; missing: boolean }) {
   const openModel = useUiStore((s) => s.openModel)
   const openTokenDialog = useUiStore((s) => s.setTokenDialogOpen)
   const { state } = job
 
   return (
     <div className="flex items-center justify-end gap-1">
-      {state === 'completed' && job.destination.kind === 'lmstudio' && (
+      {state === 'completed' && missing && (
+        <Button size="sm" variant="outline" onClick={() => void jobActions.redownload(job)}>
+          <ArrowDownToLine /> Download again
+        </Button>
+      )}
+      {state === 'completed' && !missing && job.destination.kind === 'lmstudio' && (
         <Button
           size="sm"
           variant="outline"
@@ -260,7 +283,20 @@ function RowActions({ job }: { job: DownloadJobSnapshot }) {
           </Button>
         </Tip>
       )}
-      {!isInProgress(state) && (
+      {state === 'error' && (
+        <Tip content="Discard — delete what it downloaded">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Discard download"
+            onClick={() => requestDelete(job)}
+            className="hover:text-destructive"
+          >
+            <Trash2 />
+          </Button>
+        </Tip>
+      )}
+      {(state === 'completed' || state === 'cancelled') && (
         <Tip content="Remove from list — files stay on disk">
           <Button
             variant="ghost"
@@ -292,6 +328,14 @@ function RowActions({ job }: { job: DownloadJobSnapshot }) {
           <DropdownMenuItem onSelect={() => openOnHub(job.repoId)}>
             <ExternalLink /> Open on Hugging Face
           </DropdownMenuItem>
+          {(state === 'completed' ? !missing : !isRunningState(state)) && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={() => requestDelete(job)}>
+                <Trash2 /> {state === 'completed' ? 'Delete files…' : 'Discard download…'}
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -299,6 +343,8 @@ function RowActions({ job }: { job: DownloadJobSnapshot }) {
 }
 
 export function DownloadsTable({ jobs }: { jobs: DownloadJobSnapshot[] }) {
+  const { data: report } = useStorageReport()
+  const missing = new Set(report?.missing ?? [])
   return (
     <div className="@container overflow-hidden rounded-xl border bg-card shadow-xs">
       <Table className="table-fixed">
@@ -327,13 +373,13 @@ export function DownloadsTable({ jobs }: { jobs: DownloadJobSnapshot[] }) {
                 </div>
               </TableCell>
               <TableCell className="max-w-0 py-3">
-                <StatusCell job={job} />
+                <StatusCell job={job} missing={missing.has(job.jobId)} />
               </TableCell>
               <TableCell className="hidden text-xs text-muted-foreground tabular-nums @5xl:table-cell">
                 {timeAgo(job.createdAt)}
               </TableCell>
               <TableCell className="py-3 pr-4">
-                <RowActions job={job} />
+                <RowActions job={job} missing={missing.has(job.jobId)} />
               </TableCell>
             </TableRow>
           ))}
