@@ -19,9 +19,9 @@ import { ModelAvatar } from '@/components/app/ModelAvatar'
 import { ModelContextMenu } from '@/components/app/ModelMenus'
 import { LibraryPill, SizeLabel } from '@/components/app/modelFacts'
 import { Page, PageHeader } from '@/components/app/Page'
-import { TOOLS, type Suggestion, type ToolInfo } from './privateInferenceData'
+import { USE_CASES, launchedApp, type Suggestion, type UseCase } from './privateInferenceData'
 
-const TOOL_ICON: Record<ToolInfo['icon'], ReactNode> = {
+const USE_CASE_ICON: Record<UseCase['icon'], ReactNode> = {
   keyboard: <Keyboard className="size-4" />,
   mic: <Mic className="size-4" />,
   table: <Table2 className="size-4" />
@@ -99,42 +99,45 @@ export function PrivateInferenceView() {
     <Page>
       <PageHeader
         title="Private inference"
-        description="Model picks for offtype, offrecord and offtable — local-first apps that run everything on-device with models you download here."
+        description="Models for work that should never leave your Mac: dictation, meeting notes, and comparing what different models say."
       />
       <div className="flex flex-col gap-6">
-        {TOOLS.map((tool) => (
-          <Card key={tool.name} className="@container gap-0 overflow-hidden py-0">
-            <CardHeader className="gap-1.5 border-b py-5 [.border-b]:pb-5">
-              <div className="flex items-start gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted/50">
-                  {TOOL_ICON[tool.icon]}
+        {USE_CASES.map((useCase) => {
+          const app = launchedApp(useCase)
+          return (
+            <Card key={useCase.id} className="@container gap-0 overflow-hidden py-0" data-testid={`use-case-${useCase.id}`}>
+              <CardHeader className="gap-1.5 border-b py-5 [.border-b]:pb-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted/50">
+                    {USE_CASE_ICON[useCase.icon]}
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <CardTitle className="flex items-baseline gap-2">
+                      {useCase.title}
+                      {app && <span className="text-sm font-normal text-muted-foreground">with {app.name}</span>}
+                    </CardTitle>
+                    <CardDescription>{app ? app.about : useCase.about}</CardDescription>
+                    <p className="text-xs leading-relaxed text-muted-foreground/90">{useCase.modelNeeds}</p>
+                  </div>
                 </div>
-                <div className="min-w-0 space-y-1">
-                  <CardTitle className="flex items-baseline gap-2">
-                    {tool.name}
-                    <span className="text-sm font-normal text-muted-foreground">{tool.tagline}</span>
-                  </CardTitle>
-                  <CardDescription>{tool.about}</CardDescription>
-                  <p className="text-xs leading-relaxed text-muted-foreground/90">{tool.modelNeeds}</p>
-                </div>
-              </div>
-              {tool.url && (
-                <CardAction>
-                  <Button variant="outline" size="sm" onClick={() => openExternal(tool.url!)}>
-                    Visit site <ExternalLink />
-                  </Button>
-                </CardAction>
-              )}
-            </CardHeader>
-            <CardContent className="px-0">
-              <ul className="divide-y">
-                {tool.suggestions.map((s) => (
-                  <SuggestionRow key={s.repoId} suggestion={s} />
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        ))}
+                {app?.url && (
+                  <CardAction>
+                    <Button variant="outline" size="sm" onClick={() => openExternal(app.url!)}>
+                      Get {app.name} <ExternalLink />
+                    </Button>
+                  </CardAction>
+                )}
+              </CardHeader>
+              <CardContent className="px-0">
+                <ul className="divide-y">
+                  {useCase.suggestions.map((s) => (
+                    <SuggestionRow key={s.repoId} suggestion={s} />
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
     </Page>
   )

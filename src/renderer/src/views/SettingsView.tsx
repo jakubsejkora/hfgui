@@ -1,23 +1,28 @@
-import { FolderOpen, KeyRound, Monitor, Moon, RotateCcw, Sun } from 'lucide-react'
+import { ExternalLink, FolderOpen, KeyRound, Monitor, Moon, RotateCcw, Sun } from 'lucide-react'
 import { Fragment, type ReactNode } from 'react'
 import { availableDestinations } from '@shared/destinationRules'
-import { formatBytes } from '@shared/format'
-import type { DestinationInfo, DestinationKind, Settings, Theme } from '@shared/types'
-import { jobActions } from '@/lib/actions'
+import { formatBytes, timeAgo } from '@shared/format'
+import { REPO_URL, bugReportUrl } from '@shared/project'
+import type { AppUpdateStatus, DestinationInfo, DestinationKind, Settings, Theme } from '@shared/types'
+import { jobActions, openExternal } from '@/lib/actions'
+import { checkAppUpdateNow, openReleaseNotes, requestRestart, useAppUpdate } from '@/lib/appUpdate'
 import { usePrefs } from '@/lib/prefsStore'
 import {
   useDestinations,
   useHfAccount,
   useSettings,
   useStorageReport,
+  useSystemInfo,
   useTokenStatus,
   useUpdateSettings
 } from '@/lib/queries'
+import { useNow } from '@/lib/useNow'
 import { useUiStore } from '@/lib/uiStore'
 import { cn, displayPath } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
+import { Progress } from '@/components/ui/progress'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Select,
@@ -27,8 +32,9 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
-import { StatusPill } from '@/components/app/badges'
+import { Dot, StatusPill } from '@/components/app/badges'
 import { Page, PageHeader } from '@/components/app/Page'
 import { SpeedLimitControl } from '@/components/app/SpeedLimitControl'
 
@@ -379,9 +385,130 @@ function StorageRows() {
   )
 }
 
+/** Where hfgui's own update stands, in a sentence. */
+function appUpdateLine(status: AppUpdateStatus | undefined, now: number): ReactNode {
+  switch (status?.status) {
+    case undefined:
+      return ' '
+    case 'unavailable':
+      return status.reason
+    case 'idle':
+      return status.checkedAt
+        ? `You’re up to date — checked ${timeAgo(status.checkedAt, now)}.`
+        : 'hfgui looks for new versions on GitHub.'
+    case 'checking':
+      return 'Checking GitHub for a new version…'
+    case 'downloading':
+      return `Downloading hfgui ${status.version} — ${status.percent}%`
+    case 'ready':
+      return `hfgui ${status.version} is ready. It installs the next time you quit.`
+    case 'error':
+      return (
+        <span className="inline-flex items-baseline gap-1.5">
+          <Dot tone="warning" className="relative -top-px" />
+          {status.message}
+        </span>
+      )
+  }
+}
+
+function AppUpdateRows() {
+  const { data: status } = useAppUpdate()
+  const { data: settings } = useSettings()
+  const update = useUpdateSettings()
+  // Keeps "checked 5m ago" honest while Settings stays open.
+  const now = useNow(status?.status === 'idle' && status.checkedAt != null, 30_000)
+  const busy = status?.status === 'checking' || status?.status === 'downloading'
+  const unavailable = !status || status.status === 'unavailable'
+
+  return (
+    <>
+      <Row
+        title="Updates"
+        description={<span data-testid="app-update-status">{appUpdateLine(status, now)}</span>}
+        control={
+          status?.status === 'ready' ? (
+            <Button size="sm" onClick={requestRestart} data-testid="app-update-settings-restart">
+              Restart to update
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || unavailable}
+              onClick={() => void checkAppUpdateNow()}
+              data-testid="app-update-check"
+            >
+              {busy && <Spinner />}
+              {status?.status === 'checking' ? 'Checking…' : status?.status === 'downloading' ? 'Downloading…' : 'Check now'}
+            </Button>
+          )
+        }
+      >
+        {status?.status === 'downloading' && (
+          <Progress value={status.percent} aria-label="Update download" indicatorClassName="bg-success" />
+        )}
+      </Row>
+      <Separator />
+      <Row
+        title="Check automatically"
+        description="Look for a new version at launch and every few hours, and download it in the background. Only the version check goes to GitHub — no account, nothing about you."
+        control={
+          <Switch
+            checked={settings?.autoUpdate ?? true}
+            disabled={unavailable}
+            onCheckedChange={(v) => update.mutate({ autoUpdate: v })}
+            aria-label="Check for updates automatically"
+          />
+        }
+      />
+      <Separator />
+      <Row
+        title="What’s new"
+        description="Release notes for every version, on GitHub."
+        control={
+          <Button variant="outline" size="sm" onClick={() => openReleaseNotes()}>
+            Release notes <ExternalLink />
+          </Button>
+        }
+      />
+    </>
+  )
+}
+
+/** Source and bug reports. The report opens a filled-in form in the browser; nothing is sent from here. */
+function ProjectRow() {
+  const { data: system } = useSystemInfo()
+  const report = (): void =>
+    openExternal(
+      bugReportUrl({
+        version: __APP_VERSION__,
+        osVersion: system?.osVersion ?? '',
+        cpuModel: system?.cpuModel ?? '',
+        totalMemoryBytes: system?.totalMemoryBytes ?? 0
+      })
+    )
+  return (
+    <Row
+      title="Open source"
+      description="hfgui is free and MIT-licensed. Found a bug? The report opens on GitHub with your version, macOS and Mac filled in — you see everything before it’s sent."
+      control={
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => openExternal(REPO_URL)}>
+            Source <ExternalLink />
+          </Button>
+          <Button variant="outline" size="sm" onClick={report} data-testid="report-bug">
+            Report a bug <ExternalLink />
+          </Button>
+        </div>
+      }
+    />
+  )
+}
+
 const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ['⌘', 'K'], label: 'Search models (or press /)' },
-  { keys: ['⌘', '1–6'], label: 'Overview, Browse, Downloads, Private inference, Guide, Settings' },
+  { keys: ['⌘', '1–7'], label: 'Overview, Discover, Browse, Downloads, Private inference, Guide, Settings' },
   { keys: ['⌘', 'B'], label: 'Show or hide the sidebar' },
   { keys: ['⌘', ','], label: 'Settings' },
   { keys: ['Esc'], label: 'Close the model panel or dialog' }
@@ -522,6 +649,10 @@ export function SettingsView() {
           description="hfgui downloads models from Hugging Face to this Mac: into your models folder, or straight into LM Studio and exo if you use them."
         >
           <Row title="Version" control={<span className="font-mono text-sm text-muted-foreground">{__APP_VERSION__}</span>} />
+          <Separator />
+          <AppUpdateRows />
+          <Separator />
+          <ProjectRow />
           <Separator />
           <Row
             title="Welcome screen"

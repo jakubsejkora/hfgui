@@ -18,7 +18,8 @@ const DEFAULTS: Settings = {
   clipboardWatch: true,
   speedLimitEnabled: false,
   speedLimitBytesPerSec: DEFAULT_SPEED_LIMIT,
-  notifications: true
+  notifications: true,
+  autoUpdate: true
 }
 
 /**
@@ -34,6 +35,7 @@ function normalize(s: Settings): Settings {
     speedLimitEnabled: s.speedLimitEnabled === true,
     speedLimitBytesPerSec: clampSpeedLimit(s.speedLimitBytesPerSec),
     notifications: s.notifications !== false,
+    autoUpdate: s.autoUpdate !== false,
     preferredDestination: (['lmstudio', 'exo', 'custom'] as const).includes(
       s.preferredDestination as DestinationKind
     )

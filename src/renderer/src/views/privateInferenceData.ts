@@ -3,29 +3,51 @@ export interface Suggestion {
   reason: string
 }
 
-export interface ToolInfo {
-  name: string
+/**
+ * A job that should stay on the Mac, and the models for it. The page talks
+ * about the job; an app made for it is named only once it's out (`url` set) —
+ * until then it would be a product nobody can get.
+ */
+export interface UseCase {
+  id: 'dictation' | 'meetings' | 'arena'
+  title: string
   /** Icon key resolved by the view — data stays JSX-free so tests can import it. */
   icon: 'keyboard' | 'mic' | 'table'
-  tagline: string
-  /** What the product is, in one line. */
+  /** The job itself, with no particular app in mind. */
   about: string
   modelNeeds: string
-  /** Public site; rendered as a link once the tool launches. */
-  url: string | null
   suggestions: Suggestion[]
+  app: {
+    name: string
+    tagline: string
+    /** What the product is, in one line. */
+    about: string
+    /** Public site. While null, the app stays unnamed on the page. */
+    url: string | null
+  }
 }
 
-export const TOOLS: ToolInfo[] = [
+/** The app made for a use case, once it has launched. */
+export function launchedApp(useCase: UseCase): UseCase['app'] | null {
+  return useCase.app.url ? useCase.app : null
+}
+
+export const USE_CASES: UseCase[] = [
   {
-    name: 'offtype',
+    id: 'dictation',
+    title: 'Private dictation',
     icon: 'keyboard',
-    tagline: 'Private dictation',
     about:
-      'Local dictation everywhere you type — a Wisprflow alternative that also works from your iPhone and Apple Watch.',
+      'Talk instead of typing, anywhere — with the transcription and the clean-up both running on this Mac, so nothing you say leaves it.',
+    app: {
+      name: 'offtype',
+      tagline: 'Private dictation',
+      about:
+        'Local dictation everywhere you type — a Wisprflow alternative that also works from your iPhone and Apple Watch.',
+      url: null
+    },
     modelNeeds:
       'Pairs a fast speech-to-text model with a small instruct model that cleans up what you said — dictation is transcribed, then polished, so latency beats raw quality.',
-    url: null,
     suggestions: [
       {
         repoId: 'mlx-community/parakeet-tdt-0.6b-v2',
@@ -46,14 +68,19 @@ export const TOOLS: ToolInfo[] = [
     ]
   },
   {
-    name: 'offrecord',
+    id: 'meetings',
+    title: 'Meeting notes',
     icon: 'mic',
-    tagline: 'Private meeting recorder',
-    about:
-      'Records and transcribes meetings from your iPhone or Apple Watch — no extra hardware, everything stays on-device.',
+    about: 'Record meetings and get transcripts and summaries, without sending the audio to anyone’s servers.',
+    app: {
+      name: 'offrecord',
+      tagline: 'Private meeting recorder',
+      about:
+        'Records and transcribes meetings from your iPhone or Apple Watch — no extra hardware, everything stays on-device.',
+      url: null
+    },
     modelNeeds:
       'Needs a speech-to-text model — larger ones transcribe more accurately, turbo/distilled variants keep up with live audio — plus a small instruct model for summaries.',
-    url: null,
     suggestions: [
       {
         repoId: 'mlx-community/whisper-large-v3-turbo',
@@ -74,14 +101,19 @@ export const TOOLS: ToolInfo[] = [
     ]
   },
   {
-    name: 'offtable',
+    id: 'arena',
+    title: 'Model arena',
     icon: 'table',
-    tagline: 'Local LLM arena',
-    about:
-      'Runs your prompts across several local models — side by side or in sequence — and compares the answers.',
+    about: 'Ask several local models the same thing and compare their answers side by side.',
+    app: {
+      name: 'offtable',
+      tagline: 'Local LLM arena',
+      about:
+        'Runs your prompts across several local models — side by side or in sequence — and compares the answers.',
+      url: null
+    },
     modelNeeds:
       'Wants a diverse roster at comparable sizes — different model families answer differently, and that contrast is the point. A few 7–8Bs, plus a 14B if you have the RAM.',
-    url: null,
     suggestions: [
       {
         repoId: 'Qwen/Qwen3-8B-GGUF',

@@ -1,0 +1,47 @@
+# Once a day, writes GitHub's download counters for every release file to
+# downloads.csv on the `stats` branch — GitHub only keeps running totals, so
+# these snapshots are what make "this week" possible. Nothing in the app
+# reports anything; see scripts/stats.mjs for what each number means.
+# Read it with `npm run stats`, or in this workflow's run summary.
+name: Download stats
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: download-stats
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Check out the stats branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch --depth=1 origin stats; then
+            git worktree add -b stats stats-branch FETCH_HEAD
+          else
+            git worktree add --orphan -b stats stats-branch
+          fi
+      - name: Snapshot download counts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/stats.mjs --snapshot stats-branch/downloads.csv --summary "$GITHUB_STEP_SUMMARY"
+      - name: Save
+        working-directory: stats-branch
+        run: |
+          git add downloads.csv
+          git diff --cached --quiet && exit 0
+          git commit -m "Download counts $(date -u +%F)"
+          git push origin stats

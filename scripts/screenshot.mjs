@@ -1,6 +1,9 @@
 // Screenshots of every page, for reviewing UI changes.
 //
-//   node scripts/screenshot.mjs [outDir] [dark|light|both]
+//   node scripts/screenshot.mjs [outDir] [dark|light|both] [--memory <GB>]
+//
+// --memory shows hfgui as on a Mac with that much memory (fit hints, Discover's
+// picks) — the README's screenshots use a typical 36 GB Mac.
 //
 // Runs against a throwaway profile seeded with a few downloads (finished,
 // paused, failed — nothing real on disk) so Overview and Downloads are shot
@@ -11,8 +14,11 @@ import { closeSync, ftruncateSync, mkdirSync, mkdtempSync, openSync, readFileSyn
 import { tmpdir } from 'os'
 import { join } from 'path'
 
-const outDir = process.argv[2] ?? '/tmp/hfgui-shots'
-const themes = process.argv[3] === 'both' ? ['dark', 'light'] : [process.argv[3] ?? 'dark']
+const memoryArg = process.argv.indexOf('--memory')
+const memoryGB = memoryArg === -1 ? null : Number(process.argv[memoryArg + 1])
+const positional = process.argv.slice(2).filter((a, i, all) => a !== '--memory' && all[i - 1] !== '--memory')
+const outDir = positional[0] ?? '/tmp/hfgui-shots'
+const themes = positional[1] === 'both' ? ['dark', 'light'] : [positional[1] ?? 'dark']
 const userDataDir = mkdtempSync(join(tmpdir(), 'hfgui-shot-'))
 const hfHome = mkdtempSync(join(tmpdir(), 'hfgui-shot-hfhome-'))
 const modelsDir = join(tmpdir(), 'hfgui-shot-models')
@@ -150,6 +156,10 @@ async function assertNoDragTraps(where) {
 
 // The app lands on Overview; the grid lives on Browse.
 await win.waitForSelector('[data-testid="search-input"]', { timeout: 15000 })
+if (memoryGB) {
+  await win.waitForFunction(() => document.querySelector('[data-testid="system-stats"]'), null, { timeout: 15000 })
+  await win.evaluate((gb) => window.__hfguiTest.setMemoryGB(gb), memoryGB)
+}
 await win.evaluate(() => window.__hfguiTest.setView('browse'))
 await win.waitForSelector('[data-testid="model-grid"] > button', { timeout: 30000 })
 
@@ -168,9 +178,16 @@ for (const theme of themes) {
   await win.waitForTimeout(250)
 
   await win.evaluate(() => window.__hfguiTest.setView('overview'))
-  await win.waitForSelector('[data-testid="overview-trending"] > button', { timeout: 30000 })
+  await win.waitForSelector('[data-testid="overview-picks"] > button', { timeout: 30000 })
   await win.waitForTimeout(600)
   await win.screenshot({ path: join(outDir, `overview${suffix}.png`) })
+
+  await win.evaluate(() => window.__hfguiTest.setView('discover'))
+  await win.waitForSelector('[data-testid="discover-picks"] > button', { timeout: 30000 })
+  await win.waitForSelector('[data-testid="discover-popular"] > button', { timeout: 30000 })
+  await win.waitForTimeout(600)
+  await assertNoDragTraps('discover')
+  await win.screenshot({ path: join(outDir, `discover${suffix}.png`) })
 
   await win.evaluate(() => window.__hfguiTest.setView('browse'))
   await win.waitForSelector('[data-testid="model-grid"] > button', { timeout: 30000 })

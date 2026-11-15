@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { PickFormat } from '@shared/discover'
+import type { CategoryId } from '@shared/picks'
 import type { FormatFilter, SortKey } from './hfApi'
 
 export type BrowseLayout = 'grid' | 'table'
@@ -23,6 +25,11 @@ interface Prefs {
   downloadsTab: DownloadsTab
   /** The last choice in the update dialog: keep the old version beside the new one. */
   updateKeepsOld: boolean
+  /** Discover's format switch and the category it was left on. */
+  discoverFormat: PickFormat
+  discoverTab: CategoryId
+  /** Browse leaves out uncensored and adult remixes unless searched for. */
+  hideRemixes: boolean
 }
 
 interface PrefsState extends Prefs {
@@ -37,12 +44,16 @@ export const DEFAULT_PREFS: Prefs = {
   sidebarOpen: true,
   guideCardDismissed: false,
   downloadsTab: 'all',
-  updateKeepsOld: true
+  updateKeepsOld: true,
+  discoverFormat: 'gguf',
+  discoverTab: 'chat',
+  hideRemixes: true
 }
 
 const SORTS: SortKey[] = ['trendingScore', 'downloads', 'likes', 'lastModified']
 const FORMATS: FormatFilter[] = ['gguf', 'mlx', null]
 const TABS: DownloadsTab[] = ['all', 'in-progress', 'finished', 'failed']
+const DISCOVER_TABS: CategoryId[] = ['chat', 'coding', 'vision', 'speech', 'embeddings']
 
 /** Anything stored by an older (or newer) build is checked before it is trusted. */
 export function sanitizePrefs(stored: unknown): Prefs {
@@ -57,7 +68,12 @@ export function sanitizePrefs(stored: unknown): Prefs {
     updateKeepsOld: s.updateKeepsOld !== false,
     downloadsTab: TABS.includes(s.downloadsTab as DownloadsTab)
       ? (s.downloadsTab as DownloadsTab)
-      : DEFAULT_PREFS.downloadsTab
+      : DEFAULT_PREFS.downloadsTab,
+    discoverFormat: s.discoverFormat === 'mlx' ? 'mlx' : 'gguf',
+    discoverTab: DISCOVER_TABS.includes(s.discoverTab as CategoryId)
+      ? (s.discoverTab as CategoryId)
+      : DEFAULT_PREFS.discoverTab,
+    hideRemixes: s.hideRemixes !== false
   }
 }
 

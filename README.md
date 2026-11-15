@@ -1,150 +1,120 @@
-# hfgui
+<p align="center">
+  <img src="build/icon.png" width="128" height="128" alt="hfgui icon: a halftone sphere of dots in four sizes">
+</p>
 
-A Mac app for finding and downloading open models from Hugging Face. It picks the size that
-fits your memory and keeps big downloads going until they're done. Models go to a folder of
-your choice, or straight into **LM Studio** and **exo** if you use them.
+<h1 align="center">hfgui</h1>
 
-![](docs/screenshot-overview.png)
+<p align="center">
+  Find and download open models from Hugging Face on your Mac.<br>
+  It picks the size that fits your memory, keeps big downloads going until they're done,<br>
+  and puts models where your apps look for them.
+</p>
+
+<p align="center">
+  <a href="https://github.com/jakubsejkora/hfgui/releases/latest"><b>Download for macOS</b></a>
+  &nbsp;·&nbsp; Apple silicon, macOS 12 or later &nbsp;·&nbsp; Free and open source
+</p>
+
+![hfgui's Discover page: a ladder of Mac memory sizes with the model each one gets, this Mac's pick, and what's popular from trusted publishers](docs/screenshot-discover.png)
 
 ## What it does
 
-- **Welcome**: on first launch, choose where models go and, optionally, add a Hugging Face
-  token. LM Studio and exo are offered only when they're on this Mac; nothing asks you to
-  install anything. Settings → About → Show again replays it.
-- **Overview** at a glance: what is downloading, what landed, free space where models go,
-  how big a model this Mac can run, a way into the Guide, and trending models that fit in
-  memory.
-- **Guide**: the basics for people new to local models — GGUF or MLX, which size fits (with
-  this Mac's own memory figures), where files go, running a model with LM Studio, Ollama,
-  llama.cpp, mlx-lm or exo, models that ask for a license, and disk space.
-- **Browse** the Hugging Face Hub: search, sort by Trending / Most downloaded / Most liked /
-  Recently updated, filter by format (GGUF / MLX) and task — as cards or as a dense table.
-  Cards show parameters and the size you would actually download (the estimated Q4_K_M
-  file for GGUF repos), plus "In library" once a model is downloaded. Right-click any model
-  for "Download best fit to…" — the keyboard-reachable twin of drag-and-drop.
-- **Paste a link.** The search field doubles as an omnibox: paste any
-  `huggingface.co/org/model` URL (or type a bare `org/model`) and it resolves straight to
-  the model instead of keyword-searching. `/tree/`, `/blob/` and `/resolve/` links work too.
-  You can also **drag a link from your browser onto the window**, and when hfgui regains
-  focus with a Hub link on the clipboard it offers to open it — the clipboard is read and
-  parsed in the main process, so nothing but a model name ever reaches the UI.
-- **Model detail**: GGUF quantizations grouped (multi-part files collapsed), file sizes,
-  a "fits your RAM" hint per quant, full file list for MLX repos.
-- **Download engine**: parallel jobs, pause / resume / cancel, resumable across app restarts
-  (HTTP Range + `.partial` files, atomic rename on completion), disk-space pre-flight,
-  speed / ETA, gated-model token support (stored encrypted via `safeStorage`).
-- **Speed limit**: cap the combined speed of all downloads so calls and browsing keep working.
-  One click from the speed readout in the top bar, or in Settings; applies instantly to
-  downloads already running. It throttles the connection itself — held-back chunks
-  back-pressure the socket, so TCP slows the sender — not just the disk writes. Switched on
-  mid-download with a cap that wouldn't bite, it picks one under half the current speed instead.
-- **Downloads dock**: live progress from any view, with pause and cancel in reach. The
-  Downloads page keeps the history (In progress / Finished / Failed), Finder access, exo
-  registration status, and plain-language help when something fails. Cancelling asks first,
-  because it deletes what was downloaded so far.
-- **No dead disk space**: cancelling deletes everything an unfinished download wrote
-  (including the files a multi-file model had already finished); failed downloads can be
-  discarded; finished models can be deleted from disk while other quantizations in the same
-  folder stay; and data left by downloads removed from the list before they finished is
-  found and cleaned up in one click. hfgui keeps a ledger of the files it writes, so it only
-  ever deletes its own — never another app's, even though exo's downloader writes `.partial`
-  files into the same folder. Finished models whose files were moved or deleted are flagged
-  with **Download again**.
-- **Model updates**: hfgui checks finished downloads against the Hub (shortly after launch,
-  twice a day, or Downloads → Check for updates) and says what changed — "chat template and
-  tokenizer · 17 KB to download". **Update** asks whether to replace the current version or
-  keep both, and downloads only the changed files; unchanged weights are shared with the old
-  version as hard links, so they take no extra space (small files such as configs are copied,
-  so editing one version's never changes the other's). The new version moves into the model's
-  folder (file by file, so other GGUF sizes in it are left alone), so anything pointing at it
-  gets the update. Kept, the old version sits beside it as `<model>@<revision>`, listed as
-  "Older version" until you delete it. Small downloads like these never wait for a slot.
-- **Resume, carefully**: resuming checks free space and that an external drive is
-  connected, just like starting does; "Resume on launch" picks up downloads that quitting
-  interrupted, not ones you paused yourself.
-- **Notifications**: a macOS notification when a download finishes or fails in the
-  background, a Dock badge with the number of active downloads, and the Dock icon's
-  progress bar.
-- **Keyboard**: ⌘K or / to search, ⌘1–6 for pages, ⌘B for the sidebar, ⌘, for Settings.
-- **Drag a card onto a destination** to start a download without opening the model. For
-  GGUF repos that starts the quantization hfgui would have recommended for your RAM, and
-  says which one it picked with Change / Undo. Every path is also a button.
-- **Destinations**: a default for new downloads (Settings), and each download can pick
-  another.
-  - **Models folder** → `~/Models/{publisher}/{model}/` unless you choose another folder:
-    plain files any app can open.
-  - **LM Studio** → `~/.lmstudio/models/{publisher}/{model}/`, when LM Studio is installed
-    (auto-detected, including a custom models folder configured in LM Studio). Models appear
-    after reopening LM Studio.
-  - **exo** → `~/.exo/models/{org}--{model}/`, when exo is installed (flat repo folder; exo
-    loads complete folders automatically). Offered for MLX models.
+- **Know what to download.** Discover recommends models for chat, coding, vision, speech and
+  embeddings, picked for the memory in your Mac — and shows how the pick changes on a Mac
+  with more. Next to the picks: what's popular right now, from model makers and the
+  converters people trust, without the remixes that crowd the Hub's trending lists.
+- **Browse the Hub.** Search, or sort by trending, downloads and likes. Filter by format
+  (GGUF, MLX) and task. Cards show the size you would actually download, not the size of
+  the biggest file in the repo.
+- **Know what fits.** Every quantization says whether it fits this Mac's memory. Drag a
+  model onto a destination and hfgui picks the best one for you.
+- **Paste a link.** Any `huggingface.co/…` link, or a bare `org/model`, in the search field
+  opens that model. You can also drop a link from your browser onto the window.
+- **Downloads that finish.** Parallel downloads, pause and resume — even after quitting —
+  sha256 checks, a disk-space check before starting, and a speed limit so calls keep
+  working.
+- **Models where your apps look.** Your own models folder (`~/Models` by default), or
+  straight into **LM Studio** and **exo** if they're installed. Apps you don't have are
+  never mentioned.
+- **Model updates.** hfgui notices when a model you downloaded changes on the Hub,
+  downloads only the files that changed, and lets you keep the old version or replace it.
+- **No dead disk space.** Cancelling deletes what a download wrote, and leftovers from
+  abandoned downloads are cleaned up in one click. hfgui only ever deletes files it wrote
+  itself.
+- **Gated models.** Add a Hugging Face token once. It's stored encrypted and only ever sent
+  to huggingface.co.
+- **A Guide** for people new to local models: GGUF or MLX, which size fits, where files
+  go, and how to run a model with LM Studio, Ollama, llama.cpp, mlx-lm or exo.
 
-  Apps that aren't installed don't appear anywhere: not on the model sheet, the drop
-  targets, the menus or in Settings.
+![hfgui's Overview: downloads in progress, free space, memory, and models recommended for this Mac](docs/screenshot-overview.png)
 
-## Design
+Every feature in detail: [docs/FEATURES.md](docs/FEATURES.md).
 
-A monochrome dashboard built on [shadcn/ui](https://ui.shadcn.com) — inset sidebar, page
-headers, cards and index tables — in light and dark (System / Light / Dark in Settings).
-Status colours mean what people expect: green is all good (and going, when the dot
-pulses), amber needs attention (paused, stalled, files missing), red is a problem that
-stopped a download, and grey is waiting or your own doing (queued, cancelled). Progress bars
-use the same colour as their status. The signal red of the logo is a brand colour, never a
-status. Statuses are outline pills with a coloured dot.
+## Install
 
-Every model gets a deterministic gradient avatar derived from its repo id, with the hue
-family coming from the author, so a repo always looks the same and a page of results from
-one org reads as a set.
+1. Download `hfgui-<version>-arm64.dmg` from the
+   [latest release](https://github.com/jakubsejkora/hfgui/releases/latest).
+2. Open it and drag **hfgui** to **Applications**.
 
-![](docs/screenshot-browse.png)
-![](docs/screenshot-detail.png)
-![](docs/screenshot-downloads.png)
-![](docs/screenshot-guide.png)
-![](docs/screenshot-welcome.png)
+hfgui is signed and notarized by Apple: the first time, macOS just confirms you want to
+open an app from the internet. It needs a Mac with Apple silicon (M1 or later) and macOS 12
+Monterey or later.
 
-## Development
+## Updates
 
-Requires Node 22+.
+hfgui updates itself from this repository's
+[releases](https://github.com/jakubsejkora/hfgui/releases). It checks at launch and every
+few hours, downloads a new version in the background, and installs it the next time you
+quit. To install it right away, click **Restart to update** in the sidebar. Downloads in
+progress pause for the restart and pick up where they left off.
+
+There's no update server: the app reads the latest release on GitHub. Each update is
+checked against its sha512, and macOS installs it only if it's signed by the same
+developer as the copy you're running. You can turn automatic checks off in Settings →
+About.
+
+## Privacy
+
+- No account, no telemetry, no analytics, no crash reporting.
+- Over the internet, hfgui connects only to **Hugging Face** (search, model information,
+  downloads) and **GitHub** (update checks and updates). If you use exo, it also tells
+  exo's local API, on this Mac, about the models you add.
+- Your Hugging Face token is encrypted with macOS's keychain-backed storage, and never
+  leaves the background process except on its way to huggingface.co. If you've signed in
+  with the Hugging Face CLI, hfgui can use that token instead.
+- When hfgui comes to the front, it looks at the clipboard for a Hugging Face link, in the
+  background process. Only a model name ever reaches the window. You can turn this off in
+  Settings.
+- **Report a bug** (Settings → About) opens a pre-filled issue in your browser. Nothing is
+  sent until you submit it.
+- The only numbers the developer sees are GitHub's public download counters for release
+  files: how often the installer, the updates and the update check were downloaded.
+  Downloads, not people.
+
+## Build from source
+
+You need Node.js 22 or newer.
 
 ```sh
 npm install
-npm run dev        # run with HMR
-npm run typecheck  # tsc over main/preload + renderer
-npm test           # vitest unit tests (download engine, link/quant parsing, fit rules, notifications…)
-npm run build      # production bundles into out/
-npm start          # preview the production build
-npm run icon       # regenerate build/icon.svg (scripts/icon-halftone.mjs), render .icns + .png
+npm run dev        # run with hot reload
+npm test           # unit tests
+npm run dist:mac   # a local build in dist/ (signed if you have a Developer ID)
 ```
 
-End-to-end tests (drive the real app, real downloads — needs network):
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the code layout, the end-to-end tests and the
+conventions. [docs/RELEASING.md](docs/RELEASING.md) covers how releases are signed,
+notarized and published.
 
-```sh
-npm run build
-node scripts/e2e.mjs        # GGUF download to a temp dir, pause/resume mid-flight
-node scripts/e2e-mlx.mjs    # multi-file MLX repo into the detected exo models dir
-node scripts/e2e-paste.mjs  # omnibox paste, link drop, clipboard chip, drag-to-download
-node scripts/e2e-throttle.mjs # speed cap: app rate + real socket rate via nettop, live toggle
-node scripts/screenshot.mjs /tmp/shots both   # UI screenshots, dark + light
-```
+## Contributing
 
-## Architecture
+Bug reports and pull requests are welcome — and so are model suggestions: Discover's picks
+live in [`src/shared/picks.ts`](src/shared/picks.ts). See [CONTRIBUTING.md](CONTRIBUTING.md), and
+[SECURITY.md](SECURITY.md) for reporting vulnerabilities privately.
 
-- `src/main/` — Electron main process: download manager (queue → job state machine →
-  per-file streaming downloader), destination path adapters, settings + encrypted token store.
-- `src/preload/` — `contextBridge` shim exposing the typed `window.hfgui` API.
-- `src/renderer/` — React 19 + Tailwind v4 + shadcn/ui (Radix); talks to the HF API
-  directly (search / model info / file trees) and to main over IPC for downloads and
-  settings. `components/ui/` is vendored from the shadcn new-york-v4 registry (lightly
-  adapted: tooltip delay, sheet timing, no mobile sidebar); `components/app/` is hfgui's
-  own. To add a shadcn component, take `files[].content` from
-  `https://ui.shadcn.com/r/styles/new-york-v4/<name>.json` and point its `cn` and
-  `@/registry/new-york-v4/…` imports at `@/lib/utils` and `@/components/ui/…` — the CLI's
-  install step trips over npm's allow-scripts policy here.
-- `src/shared/` — types, the IPC contract, GGUF quant parsing, link parsing, destination
-  rules, drop planning, formatters. All pure and unit-tested.
+## License
 
-Built with electron-vite. Downloads re-resolve `huggingface.co/{repo}/resolve/{sha}/{path}`
-fresh on every start/resume (CDN URLs are short-lived signed URLs), pin the repo commit sha
-per job, and never forward the HF token past the CDN redirect. Inter is bundled and inlined
-as a `data:` URI because the packaged renderer runs from `file://`, where CSP
-`font-src 'self'` does not reliably match.
+[MIT](LICENSE) © 2026 Jakub Sejkora
+
+hfgui is an independent project. It is not affiliated with or endorsed by Hugging Face,
+LM Studio or exo. Their names are trademarks of their respective owners.

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC, type HfguiApi, type NavigateTarget } from '@shared/ipc'
-import type { DownloadEvent, DownloadRequest, Settings } from '@shared/types'
+import type { AppUpdateStatus, DownloadEvent, DownloadRequest, Settings } from '@shared/types'
 
 const api: HfguiApi = {
   startDownload: (req: DownloadRequest) => ipcRenderer.invoke(IPC.startDownload, req),
@@ -39,6 +39,15 @@ const api: HfguiApi = {
     const listener = (_e: Electron.IpcRendererEvent, target: NavigateTarget): void => cb(target)
     ipcRenderer.on(IPC.navigate, listener)
     return () => ipcRenderer.removeListener(IPC.navigate, listener)
+  },
+
+  getAppUpdate: () => ipcRenderer.invoke(IPC.getAppUpdate),
+  checkAppUpdate: () => ipcRenderer.invoke(IPC.checkAppUpdate),
+  installAppUpdate: () => ipcRenderer.invoke(IPC.installAppUpdate),
+  onAppUpdate: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, status: AppUpdateStatus): void => cb(status)
+    ipcRenderer.on(IPC.appUpdateEvent, listener)
+    return () => ipcRenderer.removeListener(IPC.appUpdateEvent, listener)
   }
 }
 

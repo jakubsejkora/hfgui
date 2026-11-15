@@ -1,4 +1,4 @@
-import { ArrowDownToLine, BookOpen, Compass, KeyRound, LayoutDashboard, Settings, ShieldCheck } from 'lucide-react'
+import { ArrowDownToLine, BookOpen, Compass, KeyRound, LayoutDashboard, Settings, ShieldCheck, Telescope } from 'lucide-react'
 import { selectBusyCount, useDownloadsStore } from '@/lib/downloadsStore'
 import { useHfAccount } from '@/lib/queries'
 import { useUiStore, type View } from '@/lib/uiStore'
@@ -17,10 +17,12 @@ import {
 } from '@/components/ui/sidebar'
 // The app icon itself, so the in-app mark and the Dock icon can't drift apart.
 import appIcon from '../../../../../build/icon.svg?url'
+import { AppUpdateCard } from './AppUpdate'
 import { SystemStatus } from './SystemStatus'
 
 const NAV: Array<{ view: View; label: string; icon: typeof Compass }> = [
   { view: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { view: 'discover', label: 'Discover', icon: Telescope },
   { view: 'browse', label: 'Browse', icon: Compass },
   { view: 'downloads', label: 'Downloads', icon: ArrowDownToLine },
   { view: 'private-inference', label: 'Private inference', icon: ShieldCheck },
@@ -123,6 +125,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="gap-3 pb-3">
+        <AppUpdateCard />
         <SystemStatus />
         <SidebarMenu>
           <SidebarMenuItem>

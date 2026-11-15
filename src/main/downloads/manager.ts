@@ -101,7 +101,12 @@ export class DownloadManager {
     this.pump()
   }
 
-  async init(): Promise<void> {
+  /**
+   * Restore the list. `resumeJobIds` resumes those downloads if quitting
+   * interrupted them, even with "Resume on launch" off — for the launch right
+   * after a restart hfgui did itself (an update), not one the user chose.
+   */
+  async init(opts: { resumeJobIds?: readonly string[] } = {}): Promise<void> {
     const ledgerExisted = await this.ledger.load()
     const snapshots = await this.persistence.load()
     for (const snap of snapshots) {
@@ -155,10 +160,13 @@ export class DownloadManager {
         if (job.state !== 'completed') this.ledger.track(job.dataEntries())
       }
     }
-    if (this.deps.getAutoResume()) {
+    const resumeAll = this.deps.getAutoResume()
+    const resumeIds = new Set(opts.resumeJobIds ?? [])
+    if (resumeAll || resumeIds.size > 0) {
       // Only what quitting interrupted — not downloads the user paused on purpose.
       for (const job of [...this.jobs.values()]) {
-        if (job.state === 'paused' && !job.pausedByUser) await this.resume(job.jobId)
+        if (job.state !== 'paused' || job.pausedByUser) continue
+        if (resumeAll || resumeIds.has(job.jobId)) await this.resume(job.jobId)
       }
     }
     this.pump()

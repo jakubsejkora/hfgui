@@ -1,5 +1,6 @@
 import { ArrowUpDown, LayoutGrid, List, RotateCcw, SearchX, WifiOff } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { isUnsuitable } from '@shared/discover'
 import { parseModelRef } from '@shared/modelRef'
 import type { FormatFilter, SortKey } from '@/lib/hfApi'
 import { usePrefs, type BrowseLayout } from '@/lib/prefsStore'
@@ -55,7 +56,7 @@ export function BrowseView() {
   const openModel = useUiStore((s) => s.openModel)
   const search = useUiStore((s) => s.search)
   const setSearch = useUiStore((s) => s.setSearch)
-  const { format, task, sort, layout, set: setPrefs } = usePrefs()
+  const { format, task, sort, layout, hideRemixes, set: setPrefs } = usePrefs()
   const scrollRoot = useScrollRoot()
 
   const [debounced, setDebounced] = useState(search)
@@ -68,7 +69,12 @@ export function BrowseView() {
   // param would guarantee an empty grid behind the omnibox's Open button.
   const pastedUrl = useMemo(() => parseModelRef(debounced)?.fromUrl === true, [debounced])
   const query = useBrowseQuery(pastedUrl ? '' : debounced)
-  const models = query.data?.pages.flatMap((p) => p.models) ?? []
+  const loaded = query.data?.pages.flatMap((p) => p.models) ?? []
+  // The Hub's trending lists fill up with safety-stripped and adult remixes;
+  // leave them out of the listing, but never out of a search for them.
+  const searching = debounced.trim() !== '' && !pastedUrl
+  const remixes = searching ? 0 : loaded.filter((m) => isUnsuitable(m.id, m.tags)).length
+  const models = hideRemixes && remixes > 0 ? loaded.filter((m) => !isUnsuitable(m.id, m.tags)) : loaded
   // Results from the previous filter stay up while the new ones load; say so.
   const stale = query.isPlaceholderData
 
@@ -159,6 +165,23 @@ export function BrowseView() {
         {query.isFetching && !query.isFetchingNextPage && (
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Spinner className="size-3.5" /> Updating…
+          </span>
+        )}
+
+        {remixes > 0 && (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid="remix-note">
+            {hideRemixes
+              ? `${remixes} uncensored or adult ${remixes === 1 ? 'remix' : 'remixes'} hidden ·`
+              : 'Showing uncensored and adult remixes ·'}
+            <Button
+              variant="link"
+              size="xs"
+              className="h-auto px-0 text-xs"
+              onClick={() => setPrefs({ hideRemixes: !hideRemixes })}
+              data-testid="remix-toggle"
+            >
+              {hideRemixes ? 'Show' : 'Hide'}
+            </Button>
           </span>
         )}
 

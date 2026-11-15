@@ -1,6 +1,7 @@
 import type { ModelRef } from './modelRef'
 import type {
   ActionResult,
+  AppUpdateStatus,
   DeleteResult,
   DestinationInfo,
   DiskSpace,
@@ -42,7 +43,11 @@ export const IPC = {
   openExternal: 'hfgui:open-external',
   openInLmStudio: 'hfgui:open-in-lmstudio',
   readClipboardModelRef: 'hfgui:read-clipboard-model-ref',
-  navigate: 'hfgui:navigate'
+  navigate: 'hfgui:navigate',
+  getAppUpdate: 'hfgui:get-app-update',
+  checkAppUpdate: 'hfgui:check-app-update',
+  installAppUpdate: 'hfgui:install-app-update',
+  appUpdateEvent: 'hfgui:app-update-event'
 } as const
 
 /** Pages main can ask the window to show (e.g. after a notification click). */
@@ -92,4 +97,16 @@ export interface HfguiApi {
   readClipboardModelRef(): Promise<ModelRef | null>
   /** Main asks the window to show a page. Returns an unsubscribe function. */
   onNavigate(cb: (target: NavigateTarget) => void): () => void
+
+  /** Where hfgui's own update stands (new releases on GitHub). */
+  getAppUpdate(): Promise<AppUpdateStatus>
+  /** Ask GitHub now; a newer version downloads in the background. */
+  checkAppUpdate(): Promise<AppUpdateStatus>
+  /**
+   * Restart into the downloaded version. Downloads in progress pause for the
+   * restart and pick up again after it. Refused when nothing is ready.
+   */
+  installAppUpdate(): Promise<ActionResult>
+  /** Returns an unsubscribe function. */
+  onAppUpdate(cb: (status: AppUpdateStatus) => void): () => void
 }

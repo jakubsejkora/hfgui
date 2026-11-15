@@ -1,11 +1,16 @@
-import { BrowserWindow, Notification, app, nativeTheme, session, shell } from 'electron'
-import { join } from 'path'
+import { BrowserWindow, Notification, app, dialog, nativeTheme, session, shell } from 'electron'
+import { accessSync, constants } from 'fs'
+import { dirname, join, resolve } from 'path'
 import { IPC } from '@shared/ipc'
+import { isBusy } from '@shared/jobStates'
 import { effectiveSpeedLimit } from '@shared/speedLimit'
+import { AppUpdates } from './appUpdater'
 import { registerModelWithExo } from './destinations/exoApi'
 import { DownloadManager } from './downloads/manager'
+import { createElectronUpdater } from './electronUpdater'
 import { registerIpc } from './ipc'
 import { createNotifier, type DownloadNotice } from './notifications'
+import { takeResumeMarker, writeResumeMarker } from './resumeMarker'
 import { SettingsStore } from './settings'
 
 // Deterministic userData for e2e runs.
@@ -44,6 +49,74 @@ function showNotice(notice: DownloadNotice): void {
   })
   n.on('close', () => visibleNotices.delete(n))
   n.show()
+}
+
+/** The .app bundle this process runs from (packaged builds). */
+function appBundlePath(): string {
+  return resolve(app.getPath('exe'), '../../..')
+}
+
+/**
+ * Why Squirrel.Mac couldn't swap this bundle — it needs to write where the app
+ * sits: not on the disk image, not under App Translocation (the read-only copy
+ * macOS runs an app from when it's opened straight from Downloads), and not in
+ * a folder this account can't write to. Null when it can.
+ */
+function updateBlocker(): 'disk-image' | 'translocated' | 'read-only' | null {
+  const bundle = appBundlePath()
+  if (bundle.includes('/AppTranslocation/')) return 'translocated'
+  try {
+    accessSync(dirname(bundle), constants.W_OK)
+    return null
+  } catch {
+    return bundle.startsWith('/Volumes/') ? 'disk-image' : 'read-only'
+  }
+}
+
+/** Why this copy can't update itself, or null when it can. */
+function appUpdateUnavailableReason(): string | null {
+  if (!app.isPackaged) return 'This is a development build — release builds from GitHub update themselves.'
+  if (process.platform !== 'darwin') return 'Updates are built for macOS only.'
+  switch (updateBlocker()) {
+    case 'disk-image':
+      return 'hfgui is running from the disk image. Move it to Applications to get updates.'
+    case 'translocated':
+      return 'macOS is running hfgui from a temporary copy. Move it to Applications to get updates.'
+    case 'read-only':
+      return 'hfgui can’t replace itself in the folder it’s in. Download new versions from GitHub, or move it somewhere your account can write.'
+    case null:
+      return null
+  }
+}
+
+/**
+ * Opened from the disk image (or translocated out of Downloads), hfgui can't
+ * update itself — offer the move once per launch, before anything else starts.
+ * True when the move is under way and this instance is quitting.
+ */
+async function offerMoveToApplications(): Promise<boolean> {
+  if (!app.isPackaged || process.platform !== 'darwin' || process.env.HFGUI_USER_DATA_DIR) return false
+  const blocker = updateBlocker()
+  if (app.isInApplicationsFolder() || (blocker !== 'disk-image' && blocker !== 'translocated')) return false
+  const { response } = await dialog.showMessageBox({
+    type: 'question',
+    buttons: ['Move to Applications', 'Not Now'],
+    defaultId: 0,
+    cancelId: 1,
+    message: 'Move hfgui to your Applications folder?',
+    detail:
+      blocker === 'disk-image'
+        ? 'hfgui is running from the disk image. In Applications, it keeps itself up to date and stays put after you eject the disk image.'
+        : 'macOS is running hfgui from a temporary copy. In Applications, it keeps itself up to date.'
+  })
+  if (response !== 0) return false
+  try {
+    // Replaces an older copy already there; relaunches from the new place.
+    return app.moveToApplicationsFolder()
+  } catch (e) {
+    dialog.showErrorBox('Couldn’t move hfgui', (e as Error).message)
+    return false
+  }
 }
 
 function createWindow(): BrowserWindow {
@@ -140,6 +213,7 @@ if (!gotLock) {
   })
 
   void app.whenReady().then(async () => {
+    if (await offerMoveToApplications()) return
     const settings = new SettingsStore(app.getPath('userData'))
     patchHuggingFaceSession(settings)
 
@@ -153,14 +227,38 @@ if (!gotLock) {
       getSpeedLimit: () => effectiveSpeedLimit(settings.get()),
       registerInExo: registerModelWithExo
     })
-    registerIpc(manager, settings)
+    const downloads = manager
+
+    // hfgui's own updates, from GitHub Releases. Automatic checks are off under
+    // a test driver, like model update checks below.
+    const updateUnavailable = appUpdateUnavailableReason()
+    const appUpdates = new AppUpdates({
+      updater: updateUnavailable ? null : createElectronUpdater(),
+      unavailableReason: updateUnavailable ?? undefined,
+      enabled: () => settings.get().autoUpdate && !process.env.HFGUI_USER_DATA_DIR,
+      onChange: (status) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) win.webContents.send(IPC.appUpdateEvent, status)
+        }
+      },
+      // The quit that follows pauses and saves downloads (before-quit below);
+      // this note makes the next launch resume the ones it interrupts.
+      beforeInstall: async () => {
+        const busy = downloads.list().filter((j) => isBusy(j.state)).map((j) => j.jobId)
+        writeResumeMarker(app.getPath('userData'), busy)
+      },
+      log: (message) => console.log('[hfgui]', message)
+    })
+
+    registerIpc(manager, settings, appUpdates)
     // A damaged downloads.json must never cost the user their window: init()
     // used to throw here, before createWindow(), leaving a Dock icon and nothing else.
     try {
-      await manager.init()
+      await manager.init({ resumeJobIds: takeResumeMarker(app.getPath('userData')) })
     } catch (e) {
       console.error('[hfgui] could not restore downloads:', e)
     }
+    appUpdates.start()
 
     // Notification Center, Dock badge and Dock progress bar. Seeded with the
     // restored jobs so only transitions from here on are announced.

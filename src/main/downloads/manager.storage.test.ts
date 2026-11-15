@@ -67,10 +67,14 @@ async function seedJob(
   }
 }
 
-async function restore(snaps: DownloadJobSnapshot[], deps: Partial<ManagerDeps> = {}) {
+async function restore(
+  snaps: DownloadJobSnapshot[],
+  deps: Partial<ManagerDeps> = {},
+  opts: { resumeJobIds?: string[] } = {}
+) {
   await writeFile(join(userDataDir, 'downloads.json'), JSON.stringify(snaps))
   const mgr = makeManager(deps)
-  await mgr.init()
+  await mgr.init(opts)
   return mgr
 }
 
@@ -180,6 +184,25 @@ describe('resume', () => {
     const mgr = await restore([userPaused, interrupted], { getAutoResume: () => true })
     const state = Object.fromEntries(mgr.list().map((j) => [j.jobId, j.state]))
     expect(state).toEqual({ job_mine: 'paused', job_quit: 'queued' })
+  })
+
+  it('after an update restart resumes what it interrupted, even with Resume on launch off', async () => {
+    const userPaused = await seedJob('mine', { pausedByUser: true })
+    const interrupted = await seedJob('quit', { state: 'downloading' })
+    const waiting = await seedJob('wait', { state: 'queued' })
+    // Interrupted by some earlier quit, and left alone since: not the restart's to resume.
+    const earlier = await seedJob('old', { state: 'paused' })
+    const mgr = await restore([userPaused, interrupted, waiting, earlier], { getAutoResume: () => false }, {
+      resumeJobIds: ['job_mine', 'job_quit', 'job_wait']
+    })
+    const state = Object.fromEntries(mgr.list().map((j) => [j.jobId, j.state]))
+    expect(state).toEqual({ job_mine: 'paused', job_quit: 'queued', job_wait: 'queued', job_old: 'paused' })
+  })
+
+  it('an ordinary launch leaves interrupted downloads paused while Resume on launch is off', async () => {
+    const interrupted = await seedJob('quit', { state: 'downloading' })
+    const mgr = await restore([interrupted])
+    expect(mgr.list()[0].state).toBe('paused')
   })
 
   it('remembers a user pause across restarts and forgets it on resume', async () => {
