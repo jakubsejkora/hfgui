@@ -56,7 +56,7 @@ export function SpeedChip() {
           {cap !== null ? (
             <Gauge className="size-3.5 text-muted-foreground" />
           ) : (
-            <Dot tone="live" pulse={speed > 0} />
+            <Dot tone="success" pulse={speed > 0} />
           )}
           <span className="tabular-nums">{label}</span>
         </button>

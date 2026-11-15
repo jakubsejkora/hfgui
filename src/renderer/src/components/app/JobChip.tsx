@@ -6,7 +6,7 @@ import { useUpdates } from '@/lib/queries'
 import { useUpdateDialog } from '@/lib/updateDialog'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { StatusPill } from './badges'
+import { StatusPill, progressColor } from './badges'
 
 /**
  * Where an existing download of these files stands, in place of a Download
@@ -46,7 +46,7 @@ export function JobChip({ job }: { job: DownloadJobSnapshot }) {
           <Progress
             value={pct}
             indeterminate={job.state === 'verifying'}
-            indicatorClassName="bg-brand"
+            indicatorClassName={progressColor(job.state)}
             className="h-1.5 flex-1"
           />
           <span className="w-8 text-right text-xs text-muted-foreground tabular-nums">{pct}%</span>

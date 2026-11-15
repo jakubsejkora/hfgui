@@ -110,7 +110,7 @@ export function AppSidebar() {
                   {item.view === 'downloads' && busy > 0 && (
                     <SidebarMenuBadge
                       aria-label={`${busy} in progress`}
-                      className="top-1.5 h-5 min-w-5 rounded-full bg-brand px-1.5 text-[11px] font-semibold text-brand-foreground tabular-nums peer-data-[active=true]/menu-button:text-brand-foreground"
+                      className="top-1.5 h-5 min-w-5 rounded-full bg-foreground px-1.5 text-[11px] font-semibold text-background tabular-nums peer-data-[active=true]/menu-button:text-background"
                     >
                       {busy}
                     </SidebarMenuBadge>

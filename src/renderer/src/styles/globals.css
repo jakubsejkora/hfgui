@@ -20,10 +20,11 @@
 
 /*
  * Design tokens. shadcn/ui's token set on a neutral (monochrome) scale, plus:
- *   --brand     the one accent — a signal red. It marks live activity (running
- *               downloads, the in-progress count), the brand mark and the
- *               recommended quant. Nothing else is red except errors.
- *   --success / --warning   status dots and fit hints only.
+ *   --success / --warning / --destructive   status, as people read it: green
+ *               all good (and going, when it pulses), amber needs attention,
+ *               red a problem stopped it. Grey is waiting, or the user's doing.
+ *   --brand     the logo's signal red. Not a status colour: red on a running
+ *               download read as an error.
  * The window frame and sidebar use --sidebar; pages sit on --background in the
  * inset panel; cards lift off it with --card + border.
  *

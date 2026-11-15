@@ -59,7 +59,7 @@ export function LibraryPill({ repoId }: { repoId: string }) {
   return state === 'done' ? (
     <StatusPill tone="success">In library</StatusPill>
   ) : (
-    <StatusPill tone="live" pulse className="tabular-nums">
+    <StatusPill tone="success" pulse className="tabular-nums">
       {state}%
     </StatusPill>
   )

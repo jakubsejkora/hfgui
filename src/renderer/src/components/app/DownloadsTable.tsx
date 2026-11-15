@@ -44,7 +44,7 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table'
-import { JobStatusBadge, StatusPill } from './badges'
+import { JobStatusBadge, StatusPill, progressColor } from './badges'
 import { ModelAvatar } from './ModelAvatar'
 import { Tip } from './Tip'
 
@@ -227,7 +227,7 @@ function StatusCell({ job, missing }: { job: DownloadJobSnapshot; missing: boole
         <Progress
           value={pct}
           indeterminate={job.state === 'verifying'}
-          indicatorClassName={job.state === 'downloading' && !stalled ? 'bg-brand' : 'bg-muted-foreground/50'}
+          indicatorClassName={progressColor(job.state, stalled)}
         />
       )}
       {meta && (

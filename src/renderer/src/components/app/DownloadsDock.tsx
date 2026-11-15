@@ -15,6 +15,7 @@ import { useUiStore } from '@/lib/uiStore'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import { progressColor } from './badges'
 import { ModelAvatar } from './ModelAvatar'
 import { Tip } from './Tip'
 
@@ -70,7 +71,7 @@ function DockJob({ job }: { job: DownloadJobSnapshot }) {
         <Progress
           value={pct}
           indeterminate={job.state === 'verifying'}
-          indicatorClassName={running && !stalled ? 'bg-brand' : 'bg-muted-foreground/50'}
+          indicatorClassName={progressColor(job.state, stalled)}
           className="flex-1"
         />
         <span className="w-8 text-right text-xs text-muted-foreground tabular-nums">{pct}%</span>

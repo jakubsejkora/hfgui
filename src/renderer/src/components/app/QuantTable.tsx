@@ -1,4 +1,4 @@
-import { ArrowDownToLine } from 'lucide-react'
+import { ArrowDownToLine, Check } from 'lucide-react'
 import { Fragment, useMemo } from 'react'
 import { formatBytes } from '@shared/format'
 import { recommendQuant, type QuantGroup } from '@shared/quant'
@@ -55,8 +55,8 @@ export function QuantTable({ groups, jobFor, onDownload, pendingKey, downloadDis
               <Tip
                 content={`The best quality-for-size that fits this Mac's ${formatBytes(sys?.totalMemoryBytes ?? 0)} of memory`}
               >
-                <Badge variant="outline" className="gap-1.5">
-                  <Dot tone="live" />
+                <Badge className="gap-1">
+                  <Check className="size-3" />
                   Recommended
                 </Badge>
               </Tip>

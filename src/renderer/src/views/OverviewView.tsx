@@ -41,7 +41,7 @@ import {
 } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Dot, JobStatusBadge } from '@/components/app/badges'
+import { Dot, JobStatusBadge, progressColor } from '@/components/app/badges'
 import { ModelAvatar } from '@/components/app/ModelAvatar'
 import { ModelCard, ModelCardSkeleton } from '@/components/app/ModelCard'
 import { Page, PageHeader, Section } from '@/components/app/Page'
@@ -110,7 +110,7 @@ function Kpis() {
         value={inProgress.length}
         action={
           <IconTile>
-            {running ? <Dot tone="live" pulse className="size-2" /> : <ArrowDownToLine />}
+            {running ? <Dot tone="success" pulse className="size-2" /> : <ArrowDownToLine />}
           </IconTile>
         }
         footer={speed > 0 ? `${formatSpeed(speed)} combined` : inProgress.length > 0 ? 'Paused or waiting' : 'Idle'}
@@ -204,7 +204,7 @@ function RecentRow({ job }: { job: DownloadJobSnapshot }) {
           <Progress
             value={pct}
             className="hidden w-24 @md:block"
-            indicatorClassName={job.state === 'downloading' ? 'bg-brand' : 'bg-muted-foreground/50'}
+            indicatorClassName={progressColor(job.state)}
           />
         )}
         <JobStatusBadge state={job.state} />

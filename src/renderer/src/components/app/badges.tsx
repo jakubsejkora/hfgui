@@ -8,10 +8,14 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Tip } from './Tip'
 
-export type Tone = 'live' | 'success' | 'warning' | 'danger' | 'neutral'
+/**
+ * Status colours mean what people expect: green all good (and going, when it
+ * pulses), amber needs attention, red a problem stopped it, grey waiting or
+ * the user's own doing. The brand's signal red is the logo's, never a status.
+ */
+export type Tone = 'success' | 'warning' | 'danger' | 'neutral'
 
 const DOT: Record<Tone, string> = {
-  live: 'bg-brand',
   success: 'bg-success',
   warning: 'bg-warning',
   danger: 'bg-destructive',
@@ -48,8 +52,8 @@ export function StatusPill({
 }
 
 const JOB_TONE: Record<JobState, Tone> = {
-  downloading: 'live',
-  verifying: 'live',
+  downloading: 'success',
+  verifying: 'success',
   queued: 'neutral',
   paused: 'warning',
   completed: 'success',
@@ -105,4 +109,11 @@ export function GatedBadge() {
       </Badge>
     </Tip>
   )
+}
+
+/** A progress bar says what its status dot says: green going, amber on hold or stalled, grey waiting. */
+export function progressColor(state: JobState, stalled = false): string {
+  if ((state === 'downloading' || state === 'verifying') && !stalled) return 'bg-success'
+  if (state === 'paused' || stalled) return 'bg-warning'
+  return 'bg-muted-foreground/50'
 }

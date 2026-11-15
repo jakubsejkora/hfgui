@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ExternalLink, KeyRound, Search, SlidersHorizontal } from 'lucide-react'
+import { ArrowDownToLine, Check, ExternalLink, KeyRound, Search, SlidersHorizontal } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 import { comfortableModelBytes } from '@shared/fit'
 import { formatBytes } from '@shared/format'
@@ -7,10 +7,11 @@ import { openExternal } from '@/lib/actions'
 import { useDestinations, useHfAccount, useSettings, useSystemInfo, useTokenStatus } from '@/lib/queries'
 import { useUiStore } from '@/lib/uiStore'
 import { cn, displayPath } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dot, StatusPill } from '@/components/app/badges'
+import { StatusPill } from '@/components/app/badges'
 import { Page, PageHeader } from '@/components/app/Page'
 
 /*
@@ -218,8 +219,13 @@ function Sizes() {
               </TableCell>
               <TableCell className="pr-5">
                 <span className="flex items-center gap-2">
-                  {q.recommended && <Dot tone="live" />}
                   {q.quality}
+                  {q.recommended && (
+                    <Badge className="gap-1">
+                      <Check className="size-3" />
+                      Recommended
+                    </Badge>
+                  )}
                 </span>
               </TableCell>
             </TableRow>
