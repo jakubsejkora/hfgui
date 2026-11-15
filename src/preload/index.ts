@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type HfguiApi } from '@shared/ipc'
+import { IPC, type HfguiApi, type NavigateTarget } from '@shared/ipc'
 import type { DownloadEvent, DownloadRequest, Settings } from '@shared/types'
 
 const api: HfguiApi = {
@@ -28,7 +28,12 @@ const api: HfguiApi = {
   getSystemInfo: () => ipcRenderer.invoke(IPC.getSystemInfo),
   openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
   openInLmStudio: (repoId) => ipcRenderer.invoke(IPC.openInLmStudio, repoId),
-  readClipboardModelRef: () => ipcRenderer.invoke(IPC.readClipboardModelRef)
+  readClipboardModelRef: () => ipcRenderer.invoke(IPC.readClipboardModelRef),
+  onNavigate: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, target: NavigateTarget): void => cb(target)
+    ipcRenderer.on(IPC.navigate, listener)
+    return () => ipcRenderer.removeListener(IPC.navigate, listener)
+  }
 }
 
 contextBridge.exposeInMainWorld('hfgui', api)

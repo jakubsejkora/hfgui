@@ -1,6 +1,7 @@
 import { useEffect, useRef, type CSSProperties } from 'react'
 import { defaultDestination } from '@shared/destinationRules'
 import { parseModelRef } from '@shared/modelRef'
+import { announceTransition } from './lib/announce'
 import { useDownloadsStore } from './lib/downloadsStore'
 import { useDragStore, type DragModel } from './lib/dragStore'
 import { usePrefs } from './lib/prefsStore'
@@ -39,10 +40,22 @@ export default function App() {
 
   useEffect(() => {
     void useDownloadsStore.getState().hydrate()
-    const unsubscribe = window.hfgui.onDownloadEvent((ev) =>
-      useDownloadsStore.getState().applyEvent(ev)
-    )
-    return unsubscribe
+    const unsubscribe = window.hfgui.onDownloadEvent((ev) => {
+      const store = useDownloadsStore.getState()
+      const previous = ev.type === 'state' ? store.jobs[ev.jobId]?.state : undefined
+      store.applyEvent(ev)
+      if (ev.type === 'state') announceTransition(previous, ev.snapshot)
+    })
+    // A notification click (or anything else in main) can ask for a page.
+    const stopNavigate = window.hfgui.onNavigate((target) => {
+      const ui = useUiStore.getState()
+      ui.closeModel()
+      ui.setView(target)
+    })
+    return () => {
+      unsubscribe()
+      stopNavigate()
+    }
   }, [])
 
   // Hooks for driving the app in e2e tests. Each one calls the same code path

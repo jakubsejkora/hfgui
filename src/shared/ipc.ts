@@ -32,8 +32,12 @@ export const IPC = {
   getSystemInfo: 'hfgui:get-system-info',
   openExternal: 'hfgui:open-external',
   openInLmStudio: 'hfgui:open-in-lmstudio',
-  readClipboardModelRef: 'hfgui:read-clipboard-model-ref'
+  readClipboardModelRef: 'hfgui:read-clipboard-model-ref',
+  navigate: 'hfgui:navigate'
 } as const
+
+/** Pages main can ask the window to show (e.g. after a notification click). */
+export type NavigateTarget = 'downloads' | 'settings'
 
 export interface HfguiApi {
   startDownload(req: DownloadRequest): Promise<StartDownloadResult>
@@ -66,4 +70,6 @@ export interface HfguiApi {
    * reference or null, never whatever else the user last copied.
    */
   readClipboardModelRef(): Promise<ModelRef | null>
+  /** Main asks the window to show a page. Returns an unsubscribe function. */
+  onNavigate(cb: (target: NavigateTarget) => void): () => void
 }
